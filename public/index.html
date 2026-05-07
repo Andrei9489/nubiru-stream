@@ -542,9 +542,10 @@ let currentSources=[];
 
 function renderPlayerSources(sources=[]){
   currentSources = sources || [];
-  if(!playerSources) return;
+  const box = document.getElementById("playerSources");
+  if(!box) return;
 
-  playerSources.innerHTML = currentSources.map((src,i)=>`
+  box.innerHTML = currentSources.map((src,i)=>`
     <button onclick="switchPlayerSource(${i})">
       ${src.is_trailer ? "Trailer" : (src.label || "Server "+(i+1))}
       ${src.quality ? " - "+src.quality : ""}
@@ -655,7 +656,8 @@ function toEmbed(url){
 
 function closePlayer(){
   playerFrame.src="";
-  if(playerSources) playerSources.innerHTML="";
+  const box = document.getElementById("playerSources");
+  if(box) box.innerHTML="";
   player.style.display="none";
 }
 
