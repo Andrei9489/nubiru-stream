@@ -28,6 +28,57 @@ a{color:white}
 
 
 
+
+<div class="box">
+<h2>Universal Source Studio</h2>
+<p class="small">Adaugă surse pentru orice content: film, serial, anime, sport, muzică, entertainment.</p>
+
+<div class="grid">
+<select id="sourceContentSelect"></select>
+<button onclick="loadUniversalSources()">Încarcă surse</button>
+<button onclick="loadContentFullPreview()">Content Full Preview</button>
+</div>
+
+<h3>Adaugă sursă</h3>
+<div class="grid">
+<input id="sourceLabel" placeholder="Label: Sursa principală / Trailer / Server 2">
+<input id="sourceUrl" placeholder="URL iframe / mp4 / m3u8 / YouTube / audio">
+<select id="sourceType">
+<option value="iframe">iframe</option>
+<option value="youtube">youtube</option>
+<option value="mp4">mp4</option>
+<option value="m3u8">m3u8</option>
+<option value="audio">audio</option>
+<option value="external">external</option>
+</select>
+<input id="sourceLanguage" placeholder="Limbă: ro / en">
+<input id="sourceQuality" placeholder="Calitate: 720p / 1080p / 4K">
+</div>
+
+<div class="grid">
+<select id="sourcePrimary">
+<option value="false">Sursă principală: Nu</option>
+<option value="true">Sursă principală: Da</option>
+</select>
+<select id="sourceTrailer">
+<option value="false">Trailer: Nu</option>
+<option value="true">Trailer: Da</option>
+</select>
+<input id="sourceOrder" type="number" placeholder="Ordine" value="0">
+<button onclick="saveUniversalSource()">Salvează sursă</button>
+</div>
+
+<h3>Bulk Links</h3>
+<textarea id="bulkLinks" placeholder="Lipește linkuri, câte unul pe linie"></textarea>
+<button onclick="saveBulkLinks()">Salvează bulk links</button>
+
+<h3>Surse salvate</h3>
+<div id="universalSourcesList"></div>
+
+<h3>Content Full Preview</h3>
+<div id="contentFullPreview"></div>
+</div>
+
 <div class="box">
 <h2>AI Command Center</h2>
 <p class="small">Controlează calitatea, graph-ul și comenzile AI.</p>
@@ -507,7 +558,132 @@ async function runAiCommand(){
 
   const data = await res.json();
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function rebuildQuality(){
@@ -517,7 +693,132 @@ async function rebuildQuality(){
   const data = await res.json();
 
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function loadQualityDashboard(){
@@ -550,7 +851,132 @@ async function buildGraphForContent(){
   const data = await res.json();
 
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function loadGraphForContent(){
@@ -574,7 +1000,132 @@ async function loadGraphForContent(){
   `;
 }
 
+
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
 loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 loadAiStatus();
 loadContent();
   } else {
@@ -706,7 +1257,132 @@ async function runAiCommand(){
 
   const data = await res.json();
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function rebuildQuality(){
@@ -716,7 +1392,132 @@ async function rebuildQuality(){
   const data = await res.json();
 
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function loadQualityDashboard(){
@@ -749,7 +1550,132 @@ async function buildGraphForContent(){
   const data = await res.json();
 
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function loadGraphForContent(){
@@ -773,7 +1699,132 @@ async function loadGraphForContent(){
   `;
 }
 
+
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
 loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 loadAiStatus();
 loadContent();
 }
@@ -947,7 +1998,132 @@ async function runAiCommand(){
 
   const data = await res.json();
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function rebuildQuality(){
@@ -957,7 +2133,132 @@ async function rebuildQuality(){
   const data = await res.json();
 
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function loadQualityDashboard(){
@@ -990,7 +2291,132 @@ async function buildGraphForContent(){
   const data = await res.json();
 
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
-  loadQualityDashboard();
+  
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 }
 
 async function loadGraphForContent(){
@@ -1014,7 +2440,132 @@ async function loadGraphForContent(){
   `;
 }
 
+
+function updateSourceContentSelect(){
+  if(!window.allContent) return;
+  sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function loadUniversalSources(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+id);
+  const data = await res.json();
+
+  universalSourcesList.innerHTML = data.length ? data.map(x=>`
+    <div class="result">
+      <div>
+        <b>${x.label || "Sursă"}</b>
+        <div class="small">ID: ${x.id} | ${x.source_type} | ${x.language || ""} | ${x.quality || ""}</div>
+        <div class="small">${x.url}</div>
+        <div class="small">Primary: ${x.is_primary ? "DA" : "NU"} | Trailer: ${x.is_trailer ? "DA" : "NU"}</div>
+        <div class="actions">
+          <button onclick="previewSource('${x.url.replace(/'/g,"")}')">Preview</button>
+          <button onclick="deleteUniversalSource(${x.id})">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există surse.";
+}
+
+async function saveUniversalSource(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+  if(!sourceUrl.value.trim()) return alert("Pune URL.");
+
+  const data = {
+    content_id: contentId,
+    label: sourceLabel.value,
+    url: sourceUrl.value,
+    source_type: sourceType.value,
+    language: sourceLanguage.value,
+    quality: sourceQuality.value,
+    is_primary: sourcePrimary.value === "true",
+    is_trailer: sourceTrailer.value === "true",
+    sort_order: Number(sourceOrder.value || 0)
+  };
+
+  const res = await fetch("/content-links",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+
+  if(res.ok){
+    alert("Sursă salvată!");
+    sourceLabel.value="";
+    sourceUrl.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(result.details || result.error);
+  }
+}
+
+async function saveBulkLinks(){
+  const contentId = Number(sourceContentSelect.value);
+  if(!contentId) return alert("Alege content.");
+
+  const links = bulkLinks.value
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .map((url,i)=>({
+      label:"Sursă "+(i+1),
+      url,
+      source_type: url.includes("youtube") || url.includes("youtu.be") ? "youtube" : "iframe",
+      language: sourceLanguage.value || "",
+      quality: sourceQuality.value || "",
+      is_primary: i===0,
+      sort_order:i
+    }));
+
+  if(!links.length) return alert("Lipește linkuri.");
+
+  const res = await fetch("/content-links/bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:contentId,links})
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Bulk salvat: "+data.count);
+    bulkLinks.value="";
+    loadUniversalSources();
+    rebuildQuality();
+  } else {
+    alert(data.details || data.error);
+  }
+}
+
+async function deleteUniversalSource(id){
+  if(!confirm("Ștergi sursa?")) return;
+  await fetch("/content-links/"+id,{method:"DELETE"});
+  loadUniversalSources();
+  rebuildQuality();
+}
+
+function previewSource(url){
+  window.open(url,"_blank");
+}
+
+async function loadContentFullPreview(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-full/"+id);
+  const data = await res.json();
+
+  contentFullPreview.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
 loadQualityDashboard();
+setTimeout(updateSourceContentSelect,500);
 loadAiStatus();
 loadContent();
 </script>
