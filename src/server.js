@@ -111,6 +111,32 @@ async function initDb() {
       updated_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS seasons (
+      id SERIAL PRIMARY KEY,
+      content_id INT REFERENCES contents(id) ON DELETE CASCADE,
+      season_number INT NOT NULL,
+      title TEXT,
+      description TEXT,
+      poster_url TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(content_id, season_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS episodes (
+      id SERIAL PRIMARY KEY,
+      content_id INT REFERENCES contents(id) ON DELETE CASCADE,
+      season_id INT REFERENCES seasons(id) ON DELETE CASCADE,
+      season_number INT DEFAULT 1,
+      episode_number INT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      iframe_url TEXT,
+      source_url TEXT,
+      duration_seconds INT DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(content_id, season_number, episode_number)
+    );
   `);
 
   console.log("Nubiru ULTRA database ready");
@@ -125,10 +151,7 @@ app.get("/health", async (req, res) => {
 app.post("/auth/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
-    }
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
     const passwordHash = await bcrypt.hash(password, 10);
 
@@ -152,12 +175,9 @@ app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const result = await pool.query(
-      "SELECT * FROM users WHERE email=$1",
-      [email.toLowerCase()]
-    );
-
+    const result = await pool.query("SELECT * FROM users WHERE email=$1", [email.toLowerCase()]);
     const user = result.rows[0];
+
     if (!user) return res.status(401).json({ error: "Invalid login" });
 
     const ok = await bcrypt.compare(password, user.password_hash);
@@ -191,10 +211,7 @@ app.get("/content", async (req, res) => {
 
 app.get("/content/search", async (req, res) => {
   try {
-    const {
-      q, type, category, genre, country, language,
-      actor, director, collection, channel, year, sort
-    } = req.query;
+    const { q, type, category, genre, country, language, actor, director, collection, channel, year, sort } = req.query;
 
     const conditions = [];
     const values = [];
@@ -265,11 +282,7 @@ app.get("/content/autocomplete", async (req, res) => {
     const result = await pool.query(
       `SELECT DISTINCT title, category, year, poster_url
        FROM contents
-       WHERE title ILIKE $1
-          OR actors ILIKE $1
-          OR director ILIKE $1
-          OR genres ILIKE $1
-          OR collection ILIKE $1
+       WHERE title ILIKE $1 OR actors ILIKE $1 OR director ILIKE $1 OR genres ILIKE $1 OR collection ILIKE $1
        ORDER BY title ASC
        LIMIT 10`,
       [`%${q}%`]
@@ -357,6 +370,115 @@ app.post("/content/:id/view", async (req, res) => {
   res.json(result.rows[0]);
 });
 
+/* SEASONS */
+app.post("/seasons", async (req, res) => {
+  try {
+    const b = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO seasons
+      (content_id, season_number, title, description, poster_url)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (content_id, season_number)
+      DO UPDATE SET title=$3, description=$4, poster_url=$5
+      RETURNING *`,
+      [b.content_id, b.season_number, b.title, b.description, b.poster_url]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Season error", details: err.message });
+  }
+});
+
+app.get("/seasons/:contentId", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM seasons WHERE content_id=$1 ORDER BY season_number ASC",
+      [req.params.contentId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Get seasons error", details: err.message });
+  }
+});
+
+/* EPISODES */
+app.post("/episodes", async (req, res) => {
+  try {
+    const b = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO episodes
+      (
+        content_id, season_id, season_number, episode_number,
+        title, description, iframe_url, source_url, duration_seconds
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (content_id, season_number, episode_number)
+      DO UPDATE SET
+        season_id=$2,
+        title=$5,
+        description=$6,
+        iframe_url=$7,
+        source_url=$8,
+        duration_seconds=$9
+      RETURNING *`,
+      [
+        b.content_id,
+        b.season_id || null,
+        b.season_number || 1,
+        b.episode_number,
+        b.title,
+        b.description,
+        b.iframe_url,
+        b.source_url,
+        b.duration_seconds || 0,
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Episode error", details: err.message });
+  }
+});
+
+app.get("/episodes/:contentId", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM episodes WHERE content_id=$1 ORDER BY season_number ASC, episode_number ASC",
+      [req.params.contentId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Get episodes error", details: err.message });
+  }
+});
+
+app.get("/episodes/:contentId/:seasonNumber", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM episodes WHERE content_id=$1 AND season_number=$2 ORDER BY episode_number ASC",
+      [req.params.contentId, req.params.seasonNumber]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Get season episodes error", details: err.message });
+  }
+});
+
+app.delete("/episodes/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM episodes WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Delete episode error", details: err.message });
+  }
+});
+
 /* WATCHLIST */
 app.get("/watchlist", auth, async (req, res) => {
   const result = await pool.query(
@@ -409,11 +531,7 @@ app.post("/history/:contentId", auth, async (req, res) => {
       (user_id, content_id, progress_seconds, duration_seconds, completed, updated_at)
      VALUES ($1,$2,$3,$4,$5,NOW())
      ON CONFLICT (user_id, content_id)
-     DO UPDATE SET
-      progress_seconds=$3,
-      duration_seconds=$4,
-      completed=$5,
-      updated_at=NOW()
+     DO UPDATE SET progress_seconds=$3, duration_seconds=$4, completed=$5, updated_at=NOW()
      RETURNING *`,
     [
       req.user.id,
@@ -436,11 +554,7 @@ app.post("/preferences", auth, async (req, res) => {
       (user_id, favorite_genres, favorite_categories, favorite_countries, updated_at)
      VALUES ($1,$2,$3,$4,NOW())
      ON CONFLICT (user_id)
-     DO UPDATE SET
-      favorite_genres=$2,
-      favorite_categories=$3,
-      favorite_countries=$4,
-      updated_at=NOW()
+     DO UPDATE SET favorite_genres=$2, favorite_categories=$3, favorite_countries=$4, updated_at=NOW()
      RETURNING *`,
     [req.user.id, favorite_genres, favorite_categories, favorite_countries]
   );
@@ -450,10 +564,7 @@ app.post("/preferences", auth, async (req, res) => {
 
 app.get("/recommendations", auth, async (req, res) => {
   try {
-    const prefs = await pool.query(
-      "SELECT * FROM user_preferences WHERE user_id=$1",
-      [req.user.id]
-    );
+    const prefs = await pool.query("SELECT * FROM user_preferences WHERE user_id=$1", [req.user.id]);
 
     const history = await pool.query(
       `SELECT c.genres, c.category, c.country
@@ -469,9 +580,7 @@ app.get("/recommendations", auth, async (req, res) => {
 
     if (prefs.rows[0]) {
       ["favorite_genres", "favorite_categories", "favorite_countries"].forEach(k => {
-        if (prefs.rows[0][k]) {
-          prefs.rows[0][k].split(",").forEach(x => terms.push(x.trim()));
-        }
+        if (prefs.rows[0][k]) prefs.rows[0][k].split(",").forEach(x => terms.push(x.trim()));
       });
     }
 
@@ -596,6 +705,6 @@ app.get("/", (req, res) => {
 
 initDb().then(() => {
   app.listen(process.env.PORT || 3000, () => {
-    console.log("Nubiru Stream ULTRA running on port " + (process.env.PORT || 3000));
+    console.log("Nubiru Stream ULTRA + Episodes running on port " + (process.env.PORT || 3000));
   });
 });
