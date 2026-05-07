@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nubiru Stream User V2</title>
+<title>Nubiru Stream Episodes</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial;background:#050712;color:white}
@@ -15,8 +15,8 @@ body{margin:0;font-family:Arial;background:#050712;color:white}
 .main{margin-left:260px;width:calc(100% - 260px)}
 .topbar{position:sticky;top:0;background:rgba(5,7,18,.95);z-index:50;padding:14px}
 .gridTop{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px}
-input,button{padding:11px;border-radius:10px;border:0}
-input{background:#1f2937;color:white}
+input,button,select{padding:11px;border-radius:10px;border:0}
+input,select{background:#1f2937;color:white}
 button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
 .hero{min-height:390px;padding:60px 30px;background:linear-gradient(90deg,#111827,#050712);display:flex;align-items:end}
 .hero h1{font-size:46px;margin:0}
@@ -31,9 +31,9 @@ button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
 .playerTop{position:absolute;top:0;left:0;right:0;padding:18px;z-index:210;display:flex;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,.9),transparent)}
 .player iframe{width:100%;height:100%;border:0}
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;place-items:center}
-.modalBox{background:#111827;padding:22px;border-radius:18px;width:90%;max-width:420px;display:grid;gap:10px}
-.error{color:#f87171}
-.success{color:#4ade80}
+.modalBox{background:#111827;padding:22px;border-radius:18px;width:90%;max-width:760px;display:grid;gap:10px;max-height:90vh;overflow:auto}
+.episode{background:#1f2937;padding:12px;border-radius:12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px}
+.error{color:#f87171}.success{color:#4ade80}
 @media(max-width:900px){.app{display:block}.sidebar{position:relative;width:100%}.main{margin-left:0;width:100%}.gridTop{grid-template-columns:1fr}.hero h1{font-size:32px}}
 </style>
 </head>
@@ -64,8 +64,9 @@ button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
 <section class="hero" id="hero">
 <div>
 <h1 id="heroTitle">Nubiru Stream</h1>
-<p id="heroDesc">User system V2: login, watchlist, continue watching și recomandări.</p>
+<p id="heroDesc">Player cu filme, seriale, sezoane și episoade.</p>
 <button onclick="playHero()">▶ Play</button>
+<button onclick="openEpisodes(heroItem)">📺 Episoade</button>
 <button onclick="addHeroWatchlist()">❤️ Watchlist</button>
 </div>
 </section>
@@ -113,6 +114,15 @@ button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
 <button onclick="register()">Creează cont</button>
 <button onclick="login()">Login</button>
 <button onclick="authModal.style.display='none'">Închide</button>
+</div>
+</div>
+
+<div class="modal" id="episodesModal">
+<div class="modalBox">
+<h2 id="episodesTitle">Episoade</h2>
+<div id="seasonsBox"></div>
+<div id="episodesBox"></div>
+<button onclick="episodesModal.style.display='none'">Închide</button>
 </div>
 </div>
 
@@ -168,8 +178,9 @@ return `
 <div class="cardInfo">
 <b>${item.title}</b><br>
 <span class="small">${item.year||""} ${item.genres||item.genre||""}</span><br>
-<button onclick='event.stopPropagation();addWatchlist(${item.id})'>❤️ Add</button>
-<button onclick='event.stopPropagation();removeWatchlist(${item.id})'>🗑 Remove</button>
+<button onclick='event.stopPropagation();playItem(${JSON.stringify(item)})'>▶</button>
+<button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(item)})'>📺</button>
+<button onclick='event.stopPropagation();addWatchlist(${item.id})'>❤️</button>
 </div>
 </div>`;
 }
@@ -209,8 +220,20 @@ player.style.display="block";
 fetch("/content/"+item.id+"/view",{method:"POST"});
 }
 
+function playEpisode(ep, parentTitle){
+currentItem={id:ep.content_id,title:parentTitle || ep.title};
+playerTitle.innerText=`${parentTitle || ""} - S${ep.season_number}E${ep.episode_number}: ${ep.title}`;
+playerFrame.src=toEmbed(ep.iframe_url || ep.source_url || "");
+player.style.display="block";
+episodesModal.style.display="none";
+}
+
 function toEmbed(url){
 if(!url)return"";
+if(url.includes("<iframe")){
+const m=url.match(/src=["']([^"']+)["']/);
+return m?m[1]:"";
+}
 if(url.includes("youtube.com/watch")){
 const id=new URL(url).searchParams.get("v");
 return "https://www.youtube.com/embed/"+id;
@@ -218,6 +241,14 @@ return "https://www.youtube.com/embed/"+id;
 if(url.includes("youtu.be/")){
 const id=url.split("youtu.be/")[1].split("?")[0];
 return "https://www.youtube.com/embed/"+id;
+}
+if(url.includes("vimeo.com/")){
+const id=url.split("vimeo.com/")[1].split("?")[0];
+return "https://player.vimeo.com/video/"+id;
+}
+if(url.includes("dailymotion.com/video/")){
+const id=url.split("/video/")[1].split("?")[0];
+return "https://www.dailymotion.com/embed/video/"+id;
 }
 return url;
 }
@@ -227,45 +258,68 @@ playerFrame.src="";
 player.style.display="none";
 }
 
-async function register(){
-const res=await fetch("/auth/register",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({name:name.value,email:email.value,password:password.value})
-});
-const data=await res.json();
+async function openEpisodes(item){
+if(!item)return;
+episodesTitle.innerText="Episoade - " + item.title;
+episodesBox.innerHTML="Se încarcă...";
+seasonsBox.innerHTML="";
+episodesModal.style.display="grid";
 
-if(!res.ok){
-if(data.details && data.details.includes("duplicate")) showMsg("Emailul există deja. Apasă Login.");
-else showMsg(data.error || data.details || "Eroare register");
-return;
+const seasonsRes=await fetch("/seasons/"+item.id);
+const seasons=await seasonsRes.json();
+
+const epsRes=await fetch("/episodes/"+item.id);
+const eps=await epsRes.json();
+
+if(seasons.length){
+seasonsBox.innerHTML=`
+<select id="seasonFilter" onchange='filterEpisodes(${JSON.stringify(eps)}, "${item.title.replace(/"/g,"&quot;")}")'>
+<option value="">Toate sezoanele</option>
+${seasons.map(s=>`<option value="${s.season_number}">Sezonul ${s.season_number} - ${s.title||""}</option>`).join("")}
+</select>`;
 }
 
+renderEpisodes(eps,item.title);
+}
+
+function filterEpisodes(eps,title){
+const val=Number(seasonFilter.value);
+const filtered=val?eps.filter(e=>e.season_number===val):eps;
+renderEpisodes(filtered,title);
+}
+
+function renderEpisodes(eps,title){
+episodesBox.innerHTML=eps.length?eps.map(ep=>`
+<div class="episode">
+<div>
+<b>S${ep.season_number} E${ep.episode_number}: ${ep.title}</b>
+<p class="small">${ep.description||""}</p>
+</div>
+<button onclick='playEpisode(${JSON.stringify(ep)}, ${JSON.stringify(title)})'>▶ Play</button>
+</div>
+`).join(""):"Nu există episoade pentru acest conținut.";
+}
+
+async function register(){
+const res=await fetch("/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.value,email:email.value,password:password.value})});
+const data=await res.json();
+if(!res.ok){showMsg(data.details||data.error||"Eroare register");return;}
 token=data.token;user=data.user;
 localStorage.setItem("token",token);
 localStorage.setItem("user",JSON.stringify(user));
-showMsg("Cont creat!", "success");
+showMsg("Cont creat!","success");
 setTimeout(()=>authModal.style.display="none",600);
 renderUser();
 }
 
 async function login(){
-const res=await fetch("/auth/login",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({email:email.value,password:password.value})
-});
+const res=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email.value,password:password.value})});
 const data=await res.json();
-
-if(!res.ok){
-showMsg(data.error || data.details || "Login greșit");
-return;
-}
-
+if(!res.ok){showMsg(data.error||data.details||"Login greșit");return;}
 token=data.token;user=data.user;
 localStorage.setItem("token",token);
 localStorage.setItem("user",JSON.stringify(user));
-showMsg("Login reușit!", "success");
+showMsg("Login reușit!","success");
 setTimeout(()=>authModal.style.display="none",600);
 renderUser();
 }
@@ -282,13 +336,6 @@ async function addWatchlist(id){
 if(!token)return openAuth();
 await fetch("/watchlist/"+id,{method:"POST",headers:authHeaders()});
 alert("Adăugat în watchlist");
-}
-
-async function removeWatchlist(id){
-if(!token)return openAuth();
-await fetch("/watchlist/"+id,{method:"DELETE",headers:authHeaders()});
-alert("Șters din watchlist");
-loadWatchlist();
 }
 
 function addHeroWatchlist(){
@@ -332,7 +379,6 @@ homeSection.style.display=section==="home"?"block":"none";
 watchlistSection.style.display=section==="watchlist"?"block":"none";
 historySection.style.display=section==="history"?"block":"none";
 recommendationsSection.style.display=section==="recommendations"?"block":"none";
-
 if(section==="watchlist")loadWatchlist();
 if(section==="history")loadHistory();
 if(section==="recommendations")loadRecommendations();
