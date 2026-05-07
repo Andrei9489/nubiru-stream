@@ -1,0 +1,81 @@
+app.post("/graph/build/:contentId", async (req, res) => {
+  try {
+    const contentResult = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    const content = contentResult.rows[0];
+    if (!content) return res.status(404).json({ error: "Content not found" });
+
+    const nodes = [];
+    const tags = [];
+
+    const simpleNodes = [
+      ["category", content.category, "belongs_to_category", 3],
+      ["type", content.type, "has_type", 3],
+      ["country", content.country, "from_country", 2],
+      ["language", content.language, "has_language", 2],
+      ["collection", content.collection, "part_of_collection", 5],
+      ["channel", content.channel, "from_channel", 3],
+    ];
+
+    for (const [nodeType, name, rel, strength] of simpleNodes) {
+      const node = await upsertNode(nodeType, name, {});
+      if (node) {
+        await addRelation(content.id, node, rel, strength);
+        nodes.push(node);
+      }
+    }
+
+    const genres = String(content.genres || content.genre || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    for (const genre of genres) {
+      const node = await upsertNode("genre", genre, {});
+      await addRelation(content.id, node, "has_genre", 4);
+      nodes.push(node);
+      tags.push(await addAiTag(content.id, genre, "genre", 0.95, "graph"));
+    }
+
+    const actors = String(content.actors || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    for (const actor of actors) {
+      const node = await upsertNode("person", actor, { role: "actor" });
+      await addRelation(content.id, node, "has_actor", 4);
+      nodes.push(node);
+      tags.push(await addAiTag(content.id, actor, "actor", 0.9, "graph"));
+    }
+
+    if (content.director) {
+      const node = await upsertNode("person", content.director, { role: "director" });
+      await addRelation(content.id, node, "has_director", 5);
+      nodes.push(node);
+      tags.push(await addAiTag(content.id, content.director, "director", 0.95, "graph"));
+    }
+
+    const manualTags = String(content.tags || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    for (const tag of manualTags) {
+      tags.push(await addAiTag(content.id, tag, "tag", 0.8, "manual"));
+    }
+
+    res.json({
+      ok: true,
+      content_id: content.id,
+      nodes: nodes.length,
+      tags: tags.filter(Boolean).length
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Graph build error", details: err.message });
+  }
+});
+

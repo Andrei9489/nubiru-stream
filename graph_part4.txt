@@ -1,0 +1,99 @@
+/* AI QUALITY COMMAND CENTER */
+app.get("/ai/quality", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.id, c.title, c.category, c.type, c.poster_url,
+              s.quality_score, s.metadata_score, s.source_score,
+              s.popularity_score, s.notes, s.updated_at
+       FROM contents c
+       LEFT JOIN ai_scores s ON s.content_id=c.id
+       ORDER BY COALESCE(s.quality_score,0) ASC, c.created_at DESC
+       LIMIT 200`
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "AI quality error", details: err.message });
+  }
+});
+
+app.post("/ai/quality/rebuild", async (req, res) => {
+  try {
+    const contents = await pool.query("SELECT * FROM contents ORDER BY id ASC");
+    const scores = [];
+
+    for (const content of contents.rows) {
+      scores.push(await calculateQualityScore(content));
+    }
+
+    res.json({ ok: true, count: scores.length, scores });
+  } catch (err) {
+    res.status(500).json({ error: "AI quality rebuild error", details: err.message });
+  }
+});
+
+app.post("/ai/command", async (req, res) => {
+  try {
+    const { command } = req.body;
+
+    if (!command) {
+      return res.status(400).json({ error: "command required" });
+    }
+
+    const saved = await pool.query(
+      `INSERT INTO ai_commands (command, status, result, updated_at)
+       VALUES ($1,'processing',$2,NOW())
+       RETURNING *`,
+      [command, {}]
+    );
+
+    const cmd = command.toLowerCase();
+    let result = { message: "Command saved", actions: [] };
+
+    if (cmd.includes("quality") || cmd.includes("scor") || cmd.includes("verific")) {
+      const contents = await pool.query("SELECT * FROM contents ORDER BY id ASC");
+      let count = 0;
+
+      for (const content of contents.rows) {
+        await calculateQualityScore(content);
+        count++;
+      }
+
+      result = { message: "Quality rebuilt", count };
+    }
+
+    if (cmd.includes("graph") || cmd.includes("nod")) {
+      const contents = await pool.query("SELECT id FROM contents ORDER BY id ASC");
+
+      result = {
+        message: "Graph build jobs prepared",
+        graph_jobs: contents.rows.map(x => x.id)
+      };
+    }
+
+    const updated = await pool.query(
+      `UPDATE ai_commands
+       SET status='done', result=$1, updated_at=NOW()
+       WHERE id=$2
+       RETURNING *`,
+      [result, saved.rows[0].id]
+    );
+
+    res.json(updated.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "AI command error", details: err.message });
+  }
+});
+
+app.get("/ai/commands", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM ai_commands ORDER BY created_at DESC LIMIT 100"
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "AI commands error", details: err.message });
+  }
+});
+

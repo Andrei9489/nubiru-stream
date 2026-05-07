@@ -1,0 +1,72 @@
+async function calculateQualityScore(content) {
+  let metadataScore = 0;
+  let sourceScore = 0;
+  let popularityScore = 0;
+  const notes = [];
+
+  if (content.title) metadataScore += 10; else notes.push("missing_title");
+  if (content.description) metadataScore += 20; else notes.push("missing_description");
+  if (content.poster_url) metadataScore += 20; else notes.push("missing_poster");
+  if (content.backdrop_url) metadataScore += 15; else notes.push("missing_backdrop");
+  if (content.year) metadataScore += 10; else notes.push("missing_year");
+  if (content.genres || content.genre) metadataScore += 10; else notes.push("missing_genres");
+  if (content.rating) metadataScore += 5;
+  if (content.tmdb_id || content.imdb_id) metadataScore += 10;
+
+  const links = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM content_links WHERE content_id=$1",
+    [content.id]
+  );
+
+  const episodes = await pool.query(
+    `SELECT
+      COUNT(*)::int AS total,
+      SUM(CASE WHEN iframe_url IS NOT NULL AND iframe_url <> '' THEN 1 ELSE 0 END)::int AS iframe_count,
+      SUM(CASE WHEN source_url IS NOT NULL AND source_url <> '' THEN 1 ELSE 0 END)::int AS source_count
+     FROM episodes
+     WHERE content_id=$1`,
+    [content.id]
+  );
+
+  const linkCount = links.rows[0]?.count || 0;
+  const ep = episodes.rows[0] || {};
+
+  if (linkCount > 0) sourceScore += 60;
+  if ((ep.iframe_count || 0) + (ep.source_count || 0) > 0) sourceScore += 40;
+  if (sourceScore === 0) notes.push("missing_sources");
+
+  popularityScore = Math.min(100, Number(content.popularity || 0) + Number(content.views || 0));
+
+  const qualityScore = Math.min(
+    100,
+    Math.round((metadataScore * 0.55) + (sourceScore * 0.30) + (popularityScore * 0.15))
+  );
+
+  const saved = await pool.query(
+    `INSERT INTO ai_scores
+      (content_id, quality_score, metadata_score, source_score, popularity_score, recommendation_score, notes, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+     ON CONFLICT (content_id)
+     DO UPDATE SET
+      quality_score=$2,
+      metadata_score=$3,
+      source_score=$4,
+      popularity_score=$5,
+      recommendation_score=$6,
+      notes=$7,
+      updated_at=NOW()
+     RETURNING *`,
+    [
+      content.id,
+      qualityScore,
+      metadataScore,
+      sourceScore,
+      popularityScore,
+      qualityScore,
+      notes.join(","),
+    ]
+  );
+
+  return saved.rows[0];
+}
+

@@ -1,0 +1,55 @@
+/* UNIVERSAL CONTENT GRAPH */
+function slugifyText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function upsertNode(nodeType, name, metadata = {}) {
+  if (!name) return null;
+
+  const result = await pool.query(
+    `INSERT INTO content_nodes (node_type, name, slug, metadata)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (node_type, name)
+     DO UPDATE SET metadata = content_nodes.metadata || $4
+     RETURNING *`,
+    [nodeType, String(name).trim(), slugifyText(name), metadata]
+  );
+
+  return result.rows[0];
+}
+
+async function addRelation(contentId, node, relationType, strength = 1, metadata = {}) {
+  if (!node) return null;
+
+  const result = await pool.query(
+    `INSERT INTO content_relations
+      (from_content_id, node_id, relation_type, strength, metadata)
+     VALUES ($1,$2,$3,$4,$5)
+     RETURNING *`,
+    [contentId, node.id, relationType, strength, metadata]
+  );
+
+  return result.rows[0];
+}
+
+async function addAiTag(contentId, tag, tagType = "general", confidence = 1, source = "ai") {
+  if (!tag) return null;
+
+  const result = await pool.query(
+    `INSERT INTO ai_tags
+      (content_id, tag, tag_type, confidence, source)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (content_id, tag)
+     DO UPDATE SET confidence=$4, source=$5
+     RETURNING *`,
+    [contentId, String(tag).trim(), tagType, confidence, source]
+  );
+
+  return result.rows[0];
+}
+

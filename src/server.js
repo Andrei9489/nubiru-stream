@@ -20,6 +20,59 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
+async function calculateQualityScore(content) {
+  let metadataScore = 0;
+  let sourceScore = 0;
+  let popularityScore = 0;
+  const notes = [];
+
+  if (content.title) metadataScore += 10; else notes.push("missing_title");
+  if (content.description) metadataScore += 20; else notes.push("missing_description");
+  if (content.poster_url) metadataScore += 20; else notes.push("missing_poster");
+  if (content.backdrop_url) metadataScore += 15; else notes.push("missing_backdrop");
+  if (content.year) metadataScore += 10; else notes.push("missing_year");
+  if (content.genres || content.genre) metadataScore += 10; else notes.push("missing_genres");
+  if (content.rating) metadataScore += 5;
+  if (content.tmdb_id || content.imdb_id) metadataScore += 10;
+
+  const links = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM content_links WHERE content_id=$1",
+    [content.id]
+  );
+
+  const linkCount = links.rows[0]?.count || 0;
+  if (linkCount > 0) sourceScore += 60;
+  else notes.push("missing_sources");
+
+  popularityScore = Math.min(100, Number(content.popularity || 0) + Number(content.views || 0));
+
+  const qualityScore = Math.min(
+    100,
+    Math.round((metadataScore * 0.55) + (sourceScore * 0.30) + (popularityScore * 0.15))
+  );
+
+  const saved = await pool.query(
+    `INSERT INTO ai_scores
+      (content_id, quality_score, metadata_score, source_score, popularity_score, recommendation_score, notes, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+     ON CONFLICT (content_id)
+     DO UPDATE SET
+      quality_score=$2,
+      metadata_score=$3,
+      source_score=$4,
+      popularity_score=$5,
+      recommendation_score=$6,
+      notes=$7,
+      updated_at=NOW()
+     RETURNING *`,
+    [content.id, qualityScore, metadataScore, sourceScore, popularityScore, qualityScore, notes.join(",")]
+  );
+
+  return saved.rows[0];
+}
+
+
+
 function auth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.replace("Bearer ", "");
@@ -1200,6 +1253,306 @@ app.get("/content-full/:contentId", async (req, res) => {
     res.status(500).json({ error: "Content full error", details: err.message });
   }
 });
+
+
+/* UNIVERSAL CONTENT GRAPH */
+function slugifyText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function upsertNode(nodeType, name, metadata = {}) {
+  if (!name) return null;
+
+  const result = await pool.query(
+    `INSERT INTO content_nodes (node_type, name, slug, metadata)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (node_type, name)
+     DO UPDATE SET metadata = content_nodes.metadata || $4
+     RETURNING *`,
+    [
+      nodeType,
+      String(name).trim(),
+      slugifyText(name),
+      metadata
+    ]
+  );
+
+  return result.rows[0];
+}
+
+async function addRelation(contentId, node, relationType, strength = 1, metadata = {}) {
+  if (!node) return null;
+
+  const result = await pool.query(
+    `INSERT INTO content_relations
+      (from_content_id, node_id, relation_type, strength, metadata)
+     VALUES ($1,$2,$3,$4,$5)
+     RETURNING *`,
+    [
+      contentId,
+      node.id,
+      relationType,
+      strength,
+      metadata
+    ]
+  );
+
+  return result.rows[0];
+}
+
+async function addAiTag(contentId, tag, tagType = "general", confidence = 1, source = "ai") {
+  if (!tag) return null;
+
+  const result = await pool.query(
+    `INSERT INTO ai_tags
+      (content_id, tag, tag_type, confidence, source)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (content_id, tag)
+     DO UPDATE SET confidence=$4, source=$5
+     RETURNING *`,
+    [
+      contentId,
+      String(tag).trim(),
+      tagType,
+      confidence,
+      source
+    ]
+  );
+
+  return result.rows[0];
+}
+
+
+app.post("/graph/build/:contentId", async (req, res) => {
+  try {
+    const contentResult = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    const content = contentResult.rows[0];
+    if (!content) return res.status(404).json({ error: "Content not found" });
+
+    const nodes = [];
+    const tags = [];
+
+    const simpleNodes = [
+      ["category", content.category, "belongs_to_category", 3],
+      ["type", content.type, "has_type", 3],
+      ["country", content.country, "from_country", 2],
+      ["language", content.language, "has_language", 2],
+      ["collection", content.collection, "part_of_collection", 5],
+      ["channel", content.channel, "from_channel", 3],
+    ];
+
+    for (const [nodeType, name, rel, strength] of simpleNodes) {
+      const node = await upsertNode(nodeType, name, {});
+      if (node) {
+        await addRelation(content.id, node, rel, strength);
+        nodes.push(node);
+      }
+    }
+
+    const genres = String(content.genres || content.genre || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    for (const genre of genres) {
+      const node = await upsertNode("genre", genre, {});
+      await addRelation(content.id, node, "has_genre", 4);
+      nodes.push(node);
+      tags.push(await addAiTag(content.id, genre, "genre", 0.95, "graph"));
+    }
+
+    const actors = String(content.actors || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    for (const actor of actors) {
+      const node = await upsertNode("person", actor, { role: "actor" });
+      await addRelation(content.id, node, "has_actor", 4);
+      nodes.push(node);
+      tags.push(await addAiTag(content.id, actor, "actor", 0.9, "graph"));
+    }
+
+    if (content.director) {
+      const node = await upsertNode("person", content.director, { role: "director" });
+      await addRelation(content.id, node, "has_director", 5);
+      nodes.push(node);
+      tags.push(await addAiTag(content.id, content.director, "director", 0.95, "graph"));
+    }
+
+    const manualTags = String(content.tags || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    for (const tag of manualTags) {
+      tags.push(await addAiTag(content.id, tag, "tag", 0.8, "manual"));
+    }
+
+    res.json({
+      ok: true,
+      content_id: content.id,
+      nodes: nodes.length,
+      tags: tags.filter(Boolean).length
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Graph build error", details: err.message });
+  }
+});
+
+
+app.get("/graph/:contentId", async (req, res) => {
+  try {
+    const content = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    if (!content.rows[0]) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const relations = await pool.query(
+      `SELECT r.*, n.node_type, n.name, n.slug, n.metadata AS node_metadata
+       FROM content_relations r
+       JOIN content_nodes n ON n.id = r.node_id
+       WHERE r.from_content_id=$1
+       ORDER BY r.strength DESC, n.node_type ASC`,
+      [req.params.contentId]
+    );
+
+    const tags = await pool.query(
+      "SELECT * FROM ai_tags WHERE content_id=$1 ORDER BY confidence DESC",
+      [req.params.contentId]
+    );
+
+    const score = await pool.query(
+      "SELECT * FROM ai_scores WHERE content_id=$1",
+      [req.params.contentId]
+    );
+
+    res.json({
+      content: content.rows[0],
+      relations: relations.rows,
+      tags: tags.rows,
+      score: score.rows[0] || null
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Graph fetch error", details: err.message });
+  }
+});
+
+
+/* AI QUALITY COMMAND CENTER */
+app.get("/ai/quality", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.id, c.title, c.category, c.type, c.poster_url,
+              s.quality_score, s.metadata_score, s.source_score,
+              s.popularity_score, s.notes, s.updated_at
+       FROM contents c
+       LEFT JOIN ai_scores s ON s.content_id=c.id
+       ORDER BY COALESCE(s.quality_score,0) ASC, c.created_at DESC
+       LIMIT 200`
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "AI quality error", details: err.message });
+  }
+});
+
+app.post("/ai/quality/rebuild", async (req, res) => {
+  try {
+    const contents = await pool.query("SELECT * FROM contents ORDER BY id ASC");
+    const scores = [];
+
+    for (const content of contents.rows) {
+      scores.push(await calculateQualityScore(content));
+    }
+
+    res.json({ ok: true, count: scores.length, scores });
+  } catch (err) {
+    res.status(500).json({ error: "AI quality rebuild error", details: err.message });
+  }
+});
+
+app.post("/ai/command", async (req, res) => {
+  try {
+    const { command } = req.body;
+
+    if (!command) {
+      return res.status(400).json({ error: "command required" });
+    }
+
+    const saved = await pool.query(
+      `INSERT INTO ai_commands (command, status, result, updated_at)
+       VALUES ($1,'processing',$2,NOW())
+       RETURNING *`,
+      [command, {}]
+    );
+
+    const cmd = command.toLowerCase();
+    let result = { message: "Command saved", actions: [] };
+
+    if (cmd.includes("quality") || cmd.includes("scor") || cmd.includes("verific")) {
+      const contents = await pool.query("SELECT * FROM contents ORDER BY id ASC");
+      let count = 0;
+
+      for (const content of contents.rows) {
+        await calculateQualityScore(content);
+        count++;
+      }
+
+      result = { message: "Quality rebuilt", count };
+    }
+
+    if (cmd.includes("graph") || cmd.includes("nod")) {
+      const contents = await pool.query("SELECT id FROM contents ORDER BY id ASC");
+
+      result = {
+        message: "Graph build jobs prepared",
+        graph_jobs: contents.rows.map(x => x.id)
+      };
+    }
+
+    const updated = await pool.query(
+      `UPDATE ai_commands
+       SET status='done', result=$1, updated_at=NOW()
+       WHERE id=$2
+       RETURNING *`,
+      [result, saved.rows[0].id]
+    );
+
+    res.json(updated.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "AI command error", details: err.message });
+  }
+});
+
+app.get("/ai/commands", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM ai_commands ORDER BY created_at DESC LIMIT 100"
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "AI commands error", details: err.message });
+  }
+});
+
+
+/* GRAPH ROUTES PART 2 */
 
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
