@@ -537,16 +537,47 @@ function getPlayable(item){
   return item.iframe_url || item.youtube_trailer || item.source_url || "";
 }
 
+async function getSmartPlay(item){
+  try{
+    const res = await fetch("/content-play/"+item.id);
+    const data = await res.json();
+
+    if(data.primary){
+      return {
+        url: data.primary.normalized_url || data.primary.url,
+        type: data.primary.detected_type || data.primary.source_type || "iframe",
+        label: data.primary.label || "Primary"
+      };
+    }
+
+    if(data.trailer){
+      return {
+        url: data.trailer.normalized_url || data.trailer.url,
+        type: data.trailer.detected_type || data.trailer.source_type || "iframe",
+        label: data.trailer.label || "Trailer"
+      };
+    }
+  }catch(e){}
+
+  return {
+    url: getPlayable(item),
+    type: "iframe",
+    label: "Legacy"
+  };
+}
+
 function playHero(){
   if(heroItem)playItem(heroItem);
 }
 
 async function playItem(item){
-  const url=getPlayable(item);
+  const source = await getSmartPlay(item);
+  const url = source.url;
+
   if(!url)return alert("Nu are video/trailer.");
 
   currentItem=item;
-  playerTitle.innerText=item.title;
+  playerTitle.innerText=item.title + " - " + (source.label || "Play");
   playerFrame.src=toEmbed(url);
   player.style.display="block";
   fetch("/content/"+item.id+"/view",{method:"POST"});
