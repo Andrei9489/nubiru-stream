@@ -816,6 +816,187 @@ app.post("/ai/metadata", async (req, res) => {
   }
 });
 
+
+/* TMDB TV FULL IMPORT */
+function tmdbImage(path, size = "w500") {
+  return path ? `https://image.tmdb.org/t/p/${size}${path}` : "";
+}
+
+async function tmdbGet(url, params = {}) {
+  const response = await axios.get(url, {
+    params: {
+      api_key: process.env.TMDB_API_KEY,
+      language: "ro-RO",
+      ...params,
+    },
+  });
+
+  return response.data;
+}
+
+app.get("/tmdb/tv/:tmdbId/seasons", async (req, res) => {
+  try {
+    const tvId = req.params.tmdbId;
+
+    const tv = await tmdbGet(`https://api.themoviedb.org/3/tv/${tvId}`);
+
+    const seasons = [];
+
+    for (const season of tv.seasons || []) {
+      if (season.season_number === 0) continue;
+
+      const seasonData = await tmdbGet(
+        `https://api.themoviedb.org/3/tv/${tvId}/season/${season.season_number}`
+      );
+
+      seasons.push({
+        season_number: season.season_number,
+        title: season.name || `Sezonul ${season.season_number}`,
+        description: season.overview || "",
+        poster_url: tmdbImage(season.poster_path),
+        episodes: (seasonData.episodes || []).map(ep => ({
+          episode_number: ep.episode_number,
+          title: ep.name || `Episodul ${ep.episode_number}`,
+          description: ep.overview || "",
+          duration_seconds: ep.runtime ? ep.runtime * 60 : 0,
+        })),
+      });
+    }
+
+    res.json({
+      tmdb_id: tv.id,
+      title: tv.name,
+      description: tv.overview || "",
+      poster_url: tmdbImage(tv.poster_path),
+      backdrop_url: tmdbImage(tv.backdrop_path, "original"),
+      year: tv.first_air_date ? Number(tv.first_air_date.slice(0, 4)) : null,
+      rating: tv.vote_average ? String(tv.vote_average) : "",
+      category: "Seriale",
+      type: "series",
+      seasons,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "TMDB seasons error",
+      details: err.response?.data || err.message,
+    });
+  }
+});
+
+app.post("/tmdb/import-tv", async (req, res) => {
+  try {
+    const { tmdb_id } = req.body;
+
+    if (!tmdb_id) {
+      return res.status(400).json({ error: "tmdb_id required" });
+    }
+
+    const tv = await tmdbGet(`https://api.themoviedb.org/3/tv/${tmdb_id}`);
+
+    const contentResult = await pool.query(
+      `INSERT INTO contents
+      (
+        title, description, poster_url, backdrop_url, type,
+        year, genre, tmdb_id, category, genres, language,
+        rating, tags, popularity, is_featured, is_trending
+      )
+      VALUES
+      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,false,false)
+      RETURNING *`,
+      [
+        tv.name,
+        tv.overview || "",
+        tmdbImage(tv.poster_path),
+        tmdbImage(tv.backdrop_path, "original"),
+        "series",
+        tv.first_air_date ? Number(tv.first_air_date.slice(0, 4)) : null,
+        (tv.genres || []).map(g => g.name).join(", "),
+        String(tv.id),
+        "Seriale",
+        (tv.genres || []).map(g => g.name).join(", "),
+        tv.original_language || "",
+        tv.vote_average ? String(tv.vote_average) : "",
+        "tmdb,ai-import,series",
+        Math.round(tv.popularity || 0),
+      ]
+    );
+
+    const content = contentResult.rows[0];
+    const importedSeasons = [];
+    let importedEpisodes = 0;
+
+    for (const season of tv.seasons || []) {
+      if (season.season_number === 0) continue;
+
+      const seasonData = await tmdbGet(
+        `https://api.themoviedb.org/3/tv/${tmdb_id}/season/${season.season_number}`
+      );
+
+      const seasonResult = await pool.query(
+        `INSERT INTO seasons
+        (content_id, season_number, title, description, poster_url)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (content_id, season_number)
+        DO UPDATE SET title=$3, description=$4, poster_url=$5
+        RETURNING *`,
+        [
+          content.id,
+          season.season_number,
+          season.name || `Sezonul ${season.season_number}`,
+          season.overview || "",
+          tmdbImage(season.poster_path),
+        ]
+      );
+
+      const savedSeason = seasonResult.rows[0];
+      importedSeasons.push(savedSeason);
+
+      for (const ep of seasonData.episodes || []) {
+        await pool.query(
+          `INSERT INTO episodes
+          (
+            content_id, season_id, season_number, episode_number,
+            title, description, iframe_url, source_url, duration_seconds
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          ON CONFLICT (content_id, season_number, episode_number)
+          DO UPDATE SET
+            season_id=$2,
+            title=$5,
+            description=$6,
+            duration_seconds=$9
+          RETURNING *`,
+          [
+            content.id,
+            savedSeason.id,
+            season.season_number,
+            ep.episode_number,
+            ep.name || `Episodul ${ep.episode_number}`,
+            ep.overview || "",
+            "",
+            "",
+            ep.runtime ? ep.runtime * 60 : 0,
+          ]
+        );
+
+        importedEpisodes++;
+      }
+    }
+
+    res.json({
+      ok: true,
+      content,
+      seasons: importedSeasons.length,
+      episodes: importedEpisodes,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "TMDB import error",
+      details: err.response?.data || err.message,
+    });
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });
