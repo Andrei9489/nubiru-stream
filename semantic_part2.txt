@@ -1,0 +1,122 @@
+app.post("/ai/semantic/build/:contentId", async (req, res) => {
+  try {
+    const contentResult = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    const content = contentResult.rows[0];
+
+    if (!content) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const keywords = extractSemanticKeywords(content);
+    const emotions = inferEmotions(content, keywords);
+    const summary = buildSemanticSummary(content, keywords, emotions);
+
+    const aiScore = Math.min(
+      100,
+      keywords.length + emotions.length * 10 + (content.description ? 20 : 0)
+    );
+
+    const embedding = {
+      keywords,
+      emotions,
+      title: content.title,
+      category: content.category,
+      type: content.type,
+      genres: content.genres || content.genre || "",
+      year: content.year || null
+    };
+
+    const saved = await pool.query(
+      `INSERT INTO ai_embeddings
+        (content_id, embedding_type, embedding, summary, emotions, keywords, ai_score, updated_at)
+       VALUES ($1,'semantic',$2,$3,$4,$5,$6,NOW())
+       ON CONFLICT (content_id, embedding_type)
+       DO UPDATE SET
+        embedding=$2,
+        summary=$3,
+        emotions=$4,
+        keywords=$5,
+        ai_score=$6,
+        updated_at=NOW()
+       RETURNING *`,
+      [
+        content.id,
+        embedding,
+        summary,
+        emotions.join(","),
+        keywords.join(","),
+        aiScore
+      ]
+    );
+
+    for (const keyword of keywords.slice(0, 30)) {
+      await pool.query(
+        `INSERT INTO ai_semantic_tags
+          (content_id, tag, tag_group, weight, source)
+         VALUES ($1,$2,'keyword',1,'semantic')
+         ON CONFLICT (content_id, tag)
+         DO UPDATE SET weight=1, source='semantic'`,
+        [content.id, keyword]
+      );
+    }
+
+    for (const emotion of emotions) {
+      await pool.query(
+        `INSERT INTO ai_semantic_tags
+          (content_id, tag, tag_group, weight, source)
+         VALUES ($1,$2,'emotion',5,'semantic')
+         ON CONFLICT (content_id, tag)
+         DO UPDATE SET weight=5, source='semantic'`,
+        [content.id, emotion]
+      );
+    }
+
+    res.json({
+      ok: true,
+      content_id: content.id,
+      keywords,
+      emotions,
+      summary,
+      ai_score: aiScore,
+      embedding: saved.rows[0]
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Semantic build error", details: err.message });
+  }
+});
+
+app.get("/ai/semantic/:contentId", async (req, res) => {
+  try {
+    const content = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    if (!content.rows[0]) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const embedding = await pool.query(
+      "SELECT * FROM ai_embeddings WHERE content_id=$1 ORDER BY updated_at DESC",
+      [req.params.contentId]
+    );
+
+    const tags = await pool.query(
+      "SELECT * FROM ai_semantic_tags WHERE content_id=$1 ORDER BY weight DESC, tag ASC",
+      [req.params.contentId]
+    );
+
+    res.json({
+      content: content.rows[0],
+      embeddings: embedding.rows,
+      semantic_tags: tags.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Semantic fetch error", details: err.message });
+  }
+});
+

@@ -1743,6 +1743,346 @@ app.get("/content-play/:contentId", async (req, res) => {
 });
 
 
+/* AI SEMANTIC ENGINE */
+function splitClean(text = "") {
+  return String(text || "")
+    .split(",")
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+
+function extractSemanticKeywords(content) {
+  const words = [];
+
+  [
+    content.title,
+    content.description,
+    content.genre,
+    content.genres,
+    content.category,
+    content.tags,
+    content.collection,
+    content.actors,
+    content.director,
+    content.country,
+    content.language
+  ].forEach(v => {
+    if (!v) return;
+    String(v)
+      .replace(/[^\p{L}\p{N}\s,.-]/gu, " ")
+      .split(/[\s,.-]+/)
+      .map(x => x.trim())
+      .filter(x => x.length > 3)
+      .forEach(x => words.push(x.toLowerCase()));
+  });
+
+  return [...new Set(words)].slice(0, 80);
+}
+
+function inferEmotions(content, keywords = []) {
+  const text = (
+    (content.title || "") + " " +
+    (content.description || "") + " " +
+    (content.genre || "") + " " +
+    (content.genres || "") + " " +
+    keywords.join(" ")
+  ).toLowerCase();
+
+  const emotions = [];
+
+  const rules = [
+    ["epic", ["război", "razboi", "battle", "war", "eroi", "hero", "legend", "fantasy"]],
+    ["adventure", ["aventuri", "adventure", "călătorie", "calatorie", "quest", "world"]],
+    ["dark", ["dark", "crime", "moarte", "death", "horror", "thriller", "demon"]],
+    ["emotional", ["dragoste", "love", "familie", "family", "friend", "prieten", "sacrificiu"]],
+    ["fun", ["comedy", "comedie", "fun", "kids", "desene"]],
+    ["intense", ["action", "actiune", "acţiune", "fight", "luptă", "lupta", "sport"]],
+    ["mysterious", ["mystery", "mister", "secret", "detectiv", "unknown"]],
+    ["inspirational", ["avatar", "growth", "destin", "hope", "speranță", "speranta"]]
+  ];
+
+  for (const [emotion, keys] of rules) {
+    if (keys.some(k => text.includes(k))) emotions.push(emotion);
+  }
+
+  return [...new Set(emotions)].slice(0, 12);
+}
+
+function buildSemanticSummary(content, keywords, emotions) {
+  return [
+    content.title ? `Title: ${content.title}` : "",
+    content.category ? `Category: ${content.category}` : "",
+    content.type ? `Type: ${content.type}` : "",
+    content.genres || content.genre ? `Genres: ${content.genres || content.genre}` : "",
+    emotions.length ? `Emotions: ${emotions.join(", ")}` : "",
+    keywords.length ? `Keywords: ${keywords.slice(0, 20).join(", ")}` : ""
+  ].filter(Boolean).join(" | ");
+}
+
+function semanticOverlapScore(aKeywords = [], bKeywords = [], aEmotions = [], bEmotions = []) {
+  const ak = new Set(aKeywords);
+  const bk = new Set(bKeywords);
+  const ae = new Set(aEmotions);
+  const be = new Set(bEmotions);
+
+  let score = 0;
+
+  for (const x of ak) if (bk.has(x)) score += 3;
+  for (const x of ae) if (be.has(x)) score += 8;
+
+  return Math.min(100, score);
+}
+
+
+app.post("/ai/semantic/build/:contentId", async (req, res) => {
+  try {
+    const contentResult = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    const content = contentResult.rows[0];
+
+    if (!content) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const keywords = extractSemanticKeywords(content);
+    const emotions = inferEmotions(content, keywords);
+    const summary = buildSemanticSummary(content, keywords, emotions);
+
+    const aiScore = Math.min(
+      100,
+      keywords.length + emotions.length * 10 + (content.description ? 20 : 0)
+    );
+
+    const embedding = {
+      keywords,
+      emotions,
+      title: content.title,
+      category: content.category,
+      type: content.type,
+      genres: content.genres || content.genre || "",
+      year: content.year || null
+    };
+
+    const saved = await pool.query(
+      `INSERT INTO ai_embeddings
+        (content_id, embedding_type, embedding, summary, emotions, keywords, ai_score, updated_at)
+       VALUES ($1,'semantic',$2,$3,$4,$5,$6,NOW())
+       ON CONFLICT (content_id, embedding_type)
+       DO UPDATE SET
+        embedding=$2,
+        summary=$3,
+        emotions=$4,
+        keywords=$5,
+        ai_score=$6,
+        updated_at=NOW()
+       RETURNING *`,
+      [
+        content.id,
+        embedding,
+        summary,
+        emotions.join(","),
+        keywords.join(","),
+        aiScore
+      ]
+    );
+
+    for (const keyword of keywords.slice(0, 30)) {
+      await pool.query(
+        `INSERT INTO ai_semantic_tags
+          (content_id, tag, tag_group, weight, source)
+         VALUES ($1,$2,'keyword',1,'semantic')
+         ON CONFLICT (content_id, tag)
+         DO UPDATE SET weight=1, source='semantic'`,
+        [content.id, keyword]
+      );
+    }
+
+    for (const emotion of emotions) {
+      await pool.query(
+        `INSERT INTO ai_semantic_tags
+          (content_id, tag, tag_group, weight, source)
+         VALUES ($1,$2,'emotion',5,'semantic')
+         ON CONFLICT (content_id, tag)
+         DO UPDATE SET weight=5, source='semantic'`,
+        [content.id, emotion]
+      );
+    }
+
+    res.json({
+      ok: true,
+      content_id: content.id,
+      keywords,
+      emotions,
+      summary,
+      ai_score: aiScore,
+      embedding: saved.rows[0]
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Semantic build error", details: err.message });
+  }
+});
+
+app.get("/ai/semantic/:contentId", async (req, res) => {
+  try {
+    const content = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    if (!content.rows[0]) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const embedding = await pool.query(
+      "SELECT * FROM ai_embeddings WHERE content_id=$1 ORDER BY updated_at DESC",
+      [req.params.contentId]
+    );
+
+    const tags = await pool.query(
+      "SELECT * FROM ai_semantic_tags WHERE content_id=$1 ORDER BY weight DESC, tag ASC",
+      [req.params.contentId]
+    );
+
+    res.json({
+      content: content.rows[0],
+      embeddings: embedding.rows,
+      semantic_tags: tags.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Semantic fetch error", details: err.message });
+  }
+});
+
+
+app.get("/ai/similar/:contentId", async (req, res) => {
+  try {
+    const base = await pool.query(
+      "SELECT * FROM ai_embeddings WHERE content_id=$1 AND embedding_type='semantic'",
+      [req.params.contentId]
+    );
+
+    if (!base.rows[0]) {
+      return res.status(404).json({ error: "Semantic embedding not found. Build it first." });
+    }
+
+    const baseEmbedding = base.rows[0].embedding || {};
+    const baseKeywords = baseEmbedding.keywords || [];
+    const baseEmotions = baseEmbedding.emotions || [];
+
+    const all = await pool.query(
+      `SELECT e.*, c.title, c.poster_url, c.category, c.type, c.year
+       FROM ai_embeddings e
+       JOIN contents c ON c.id=e.content_id
+       WHERE e.embedding_type='semantic'
+         AND e.content_id <> $1`,
+      [req.params.contentId]
+    );
+
+    const results = all.rows.map(row => {
+      const emb = row.embedding || {};
+      const score = semanticOverlapScore(
+        baseKeywords,
+        emb.keywords || [],
+        baseEmotions,
+        emb.emotions || []
+      );
+
+      return {
+        content_id: row.content_id,
+        title: row.title,
+        poster_url: row.poster_url,
+        category: row.category,
+        type: row.type,
+        year: row.year,
+        score,
+        emotions: emb.emotions || [],
+        keywords: (emb.keywords || []).slice(0, 20),
+        reason: score > 0 ? "semantic/emotional overlap" : "low similarity"
+      };
+    })
+    .filter(x => x.score > 0)
+    .sort((a,b) => b.score - a.score)
+    .slice(0, 30);
+
+    res.json({
+      content_id: Number(req.params.contentId),
+      similar: results
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Similar AI error", details: err.message });
+  }
+});
+
+app.post("/ai/semantic/rebuild", async (req, res) => {
+  try {
+    const contents = await pool.query("SELECT id FROM contents ORDER BY id ASC");
+    const built = [];
+
+    for (const c of contents.rows) {
+      const response = await pool.query(
+        "SELECT * FROM contents WHERE id=$1",
+        [c.id]
+      );
+
+      const content = response.rows[0];
+      const keywords = extractSemanticKeywords(content);
+      const emotions = inferEmotions(content, keywords);
+      const summary = buildSemanticSummary(content, keywords, emotions);
+
+      const aiScore = Math.min(
+        100,
+        keywords.length + emotions.length * 10 + (content.description ? 20 : 0)
+      );
+
+      const embedding = {
+        keywords,
+        emotions,
+        title: content.title,
+        category: content.category,
+        type: content.type,
+        genres: content.genres || content.genre || "",
+        year: content.year || null
+      };
+
+      await pool.query(
+        `INSERT INTO ai_embeddings
+          (content_id, embedding_type, embedding, summary, emotions, keywords, ai_score, updated_at)
+         VALUES ($1,'semantic',$2,$3,$4,$5,$6,NOW())
+         ON CONFLICT (content_id, embedding_type)
+         DO UPDATE SET
+          embedding=$2,
+          summary=$3,
+          emotions=$4,
+          keywords=$5,
+          ai_score=$6,
+          updated_at=NOW()`,
+        [
+          content.id,
+          embedding,
+          summary,
+          emotions.join(","),
+          keywords.join(","),
+          aiScore
+        ]
+      );
+
+      built.push(content.id);
+    }
+
+    res.json({
+      ok: true,
+      count: built.length,
+      content_ids: built
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Semantic rebuild error", details: err.message });
+  }
+});
+
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });

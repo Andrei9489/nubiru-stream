@@ -1,0 +1,125 @@
+app.get("/ai/similar/:contentId", async (req, res) => {
+  try {
+    const base = await pool.query(
+      "SELECT * FROM ai_embeddings WHERE content_id=$1 AND embedding_type='semantic'",
+      [req.params.contentId]
+    );
+
+    if (!base.rows[0]) {
+      return res.status(404).json({ error: "Semantic embedding not found. Build it first." });
+    }
+
+    const baseEmbedding = base.rows[0].embedding || {};
+    const baseKeywords = baseEmbedding.keywords || [];
+    const baseEmotions = baseEmbedding.emotions || [];
+
+    const all = await pool.query(
+      `SELECT e.*, c.title, c.poster_url, c.category, c.type, c.year
+       FROM ai_embeddings e
+       JOIN contents c ON c.id=e.content_id
+       WHERE e.embedding_type='semantic'
+         AND e.content_id <> $1`,
+      [req.params.contentId]
+    );
+
+    const results = all.rows.map(row => {
+      const emb = row.embedding || {};
+      const score = semanticOverlapScore(
+        baseKeywords,
+        emb.keywords || [],
+        baseEmotions,
+        emb.emotions || []
+      );
+
+      return {
+        content_id: row.content_id,
+        title: row.title,
+        poster_url: row.poster_url,
+        category: row.category,
+        type: row.type,
+        year: row.year,
+        score,
+        emotions: emb.emotions || [],
+        keywords: (emb.keywords || []).slice(0, 20),
+        reason: score > 0 ? "semantic/emotional overlap" : "low similarity"
+      };
+    })
+    .filter(x => x.score > 0)
+    .sort((a,b) => b.score - a.score)
+    .slice(0, 30);
+
+    res.json({
+      content_id: Number(req.params.contentId),
+      similar: results
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Similar AI error", details: err.message });
+  }
+});
+
+app.post("/ai/semantic/rebuild", async (req, res) => {
+  try {
+    const contents = await pool.query("SELECT id FROM contents ORDER BY id ASC");
+    const built = [];
+
+    for (const c of contents.rows) {
+      const response = await pool.query(
+        "SELECT * FROM contents WHERE id=$1",
+        [c.id]
+      );
+
+      const content = response.rows[0];
+      const keywords = extractSemanticKeywords(content);
+      const emotions = inferEmotions(content, keywords);
+      const summary = buildSemanticSummary(content, keywords, emotions);
+
+      const aiScore = Math.min(
+        100,
+        keywords.length + emotions.length * 10 + (content.description ? 20 : 0)
+      );
+
+      const embedding = {
+        keywords,
+        emotions,
+        title: content.title,
+        category: content.category,
+        type: content.type,
+        genres: content.genres || content.genre || "",
+        year: content.year || null
+      };
+
+      await pool.query(
+        `INSERT INTO ai_embeddings
+          (content_id, embedding_type, embedding, summary, emotions, keywords, ai_score, updated_at)
+         VALUES ($1,'semantic',$2,$3,$4,$5,$6,NOW())
+         ON CONFLICT (content_id, embedding_type)
+         DO UPDATE SET
+          embedding=$2,
+          summary=$3,
+          emotions=$4,
+          keywords=$5,
+          ai_score=$6,
+          updated_at=NOW()`,
+        [
+          content.id,
+          embedding,
+          summary,
+          emotions.join(","),
+          keywords.join(","),
+          aiScore
+        ]
+      );
+
+      built.push(content.id);
+    }
+
+    res.json({
+      ok: true,
+      count: built.length,
+      content_ids: built
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Semantic rebuild error", details: err.message });
+  }
+});
+

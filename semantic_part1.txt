@@ -1,0 +1,90 @@
+/* AI SEMANTIC ENGINE */
+function splitClean(text = "") {
+  return String(text || "")
+    .split(",")
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+
+function extractSemanticKeywords(content) {
+  const words = [];
+
+  [
+    content.title,
+    content.description,
+    content.genre,
+    content.genres,
+    content.category,
+    content.tags,
+    content.collection,
+    content.actors,
+    content.director,
+    content.country,
+    content.language
+  ].forEach(v => {
+    if (!v) return;
+    String(v)
+      .replace(/[^\p{L}\p{N}\s,.-]/gu, " ")
+      .split(/[\s,.-]+/)
+      .map(x => x.trim())
+      .filter(x => x.length > 3)
+      .forEach(x => words.push(x.toLowerCase()));
+  });
+
+  return [...new Set(words)].slice(0, 80);
+}
+
+function inferEmotions(content, keywords = []) {
+  const text = (
+    (content.title || "") + " " +
+    (content.description || "") + " " +
+    (content.genre || "") + " " +
+    (content.genres || "") + " " +
+    keywords.join(" ")
+  ).toLowerCase();
+
+  const emotions = [];
+
+  const rules = [
+    ["epic", ["război", "razboi", "battle", "war", "eroi", "hero", "legend", "fantasy"]],
+    ["adventure", ["aventuri", "adventure", "călătorie", "calatorie", "quest", "world"]],
+    ["dark", ["dark", "crime", "moarte", "death", "horror", "thriller", "demon"]],
+    ["emotional", ["dragoste", "love", "familie", "family", "friend", "prieten", "sacrificiu"]],
+    ["fun", ["comedy", "comedie", "fun", "kids", "desene"]],
+    ["intense", ["action", "actiune", "acţiune", "fight", "luptă", "lupta", "sport"]],
+    ["mysterious", ["mystery", "mister", "secret", "detectiv", "unknown"]],
+    ["inspirational", ["avatar", "growth", "destin", "hope", "speranță", "speranta"]]
+  ];
+
+  for (const [emotion, keys] of rules) {
+    if (keys.some(k => text.includes(k))) emotions.push(emotion);
+  }
+
+  return [...new Set(emotions)].slice(0, 12);
+}
+
+function buildSemanticSummary(content, keywords, emotions) {
+  return [
+    content.title ? `Title: ${content.title}` : "",
+    content.category ? `Category: ${content.category}` : "",
+    content.type ? `Type: ${content.type}` : "",
+    content.genres || content.genre ? `Genres: ${content.genres || content.genre}` : "",
+    emotions.length ? `Emotions: ${emotions.join(", ")}` : "",
+    keywords.length ? `Keywords: ${keywords.slice(0, 20).join(", ")}` : ""
+  ].filter(Boolean).join(" | ");
+}
+
+function semanticOverlapScore(aKeywords = [], bKeywords = [], aEmotions = [], bEmotions = []) {
+  const ak = new Set(aKeywords);
+  const bk = new Set(bKeywords);
+  const ae = new Set(aEmotions);
+  const be = new Set(bEmotions);
+
+  let score = 0;
+
+  for (const x of ak) if (bk.has(x)) score += 3;
+  for (const x of ae) if (be.has(x)) score += 8;
+
+  return Math.min(100, score);
+}
+
