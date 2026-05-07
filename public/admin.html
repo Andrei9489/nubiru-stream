@@ -37,6 +37,7 @@ a{color:white}
 <select id="sourceContentSelect"></select>
 <button onclick="loadUniversalSources()">Încarcă surse</button>
 <button onclick="loadContentFullPreview()">Content Full Preview</button>
+<button onclick="previewPrimarySource()">Preview Primary</button>
 </div>
 
 <h3>Adaugă sursă</h3>
@@ -66,11 +67,17 @@ a{color:white}
 </select>
 <input id="sourceOrder" type="number" placeholder="Ordine" value="0">
 <button onclick="saveUniversalSource()">Salvează sursă</button>
+<button onclick="analyzeSourceUrl()">Analyze URL</button>
+<button onclick="normalizeSelectedSources()">Normalize surse</button>
 </div>
 
 <h3>Bulk Links</h3>
 <textarea id="bulkLinks" placeholder="Lipește linkuri, câte unul pe linie"></textarea>
 <button onclick="saveBulkLinks()">Salvează bulk links</button>
+
+<h3>Smart Source Preview</h3>
+<div id="sourceAnalysisBox"></div>
+<div id="sourcePreviewBox"></div>
 
 <h3>Surse salvate</h3>
 <div id="universalSourcesList"></div>
@@ -564,6 +571,103 @@ function updateSourceContentSelect(){
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
+}
+
 async function loadUniversalSources(){
   const id = sourceContentSelect.value;
   if(!id) return alert("Alege content.");
@@ -697,6 +801,103 @@ async function rebuildQuality(){
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
 }
 
 async function loadUniversalSources(){
@@ -857,6 +1058,103 @@ function updateSourceContentSelect(){
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
+}
+
 async function loadUniversalSources(){
   const id = sourceContentSelect.value;
   if(!id) return alert("Alege content.");
@@ -1004,6 +1302,103 @@ async function loadGraphForContent(){
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
 }
 
 async function loadUniversalSources(){
@@ -1266,6 +1661,103 @@ function updateSourceContentSelect(){
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
+}
+
 async function loadUniversalSources(){
   const id = sourceContentSelect.value;
   if(!id) return alert("Alege content.");
@@ -1399,6 +1891,103 @@ async function rebuildQuality(){
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
 }
 
 async function loadUniversalSources(){
@@ -1559,6 +2148,103 @@ function updateSourceContentSelect(){
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
+}
+
 async function loadUniversalSources(){
   const id = sourceContentSelect.value;
   if(!id) return alert("Alege content.");
@@ -1706,6 +2392,103 @@ async function loadGraphForContent(){
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
 }
 
 async function loadUniversalSources(){
@@ -2007,6 +2790,103 @@ function updateSourceContentSelect(){
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
+}
+
 async function loadUniversalSources(){
   const id = sourceContentSelect.value;
   if(!id) return alert("Alege content.");
@@ -2140,6 +3020,103 @@ async function rebuildQuality(){
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
 }
 
 async function loadUniversalSources(){
@@ -2300,6 +3277,103 @@ function updateSourceContentSelect(){
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
+}
+
 async function loadUniversalSources(){
   const id = sourceContentSelect.value;
   if(!id) return alert("Alege content.");
@@ -2447,6 +3521,103 @@ async function loadGraphForContent(){
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+
+async function analyzeSourceUrl(){
+  const url = sourceUrl.value.trim();
+  if(!url) return alert("Pune URL pentru analiză.");
+
+  const res = await fetch("/sources/analyze",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  sourceAnalysisBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Analiză sursă</b>
+        <div class="small">Original: ${data.original_url}</div>
+        <div class="small">Normalizat: ${data.normalized_url}</div>
+        <div class="small">Tip detectat: ${data.source_type}</div>
+        <div class="small">Embed: ${data.can_embed ? "DA" : "NU"} | HTML5: ${data.can_html5 ? "DA" : "NU"}</div>
+      </div>
+    </div>
+  `;
+
+  sourceUrl.value = data.normalized_url || url;
+  sourceType.value = data.source_type || sourceType.value;
+
+  renderSourcePreview(data.normalized_url, data.source_type);
+}
+
+function renderSourcePreview(url,type){
+  if(!url){
+    sourcePreviewBox.innerHTML = "";
+    return;
+  }
+
+  if(["youtube","iframe","vimeo","dailymotion"].includes(type)){
+    sourcePreviewBox.innerHTML = `
+      <iframe src="${url}" style="width:100%;height:360px;border:0;border-radius:16px;background:#000" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    `;
+    return;
+  }
+
+  if(type === "mp4"){
+    sourcePreviewBox.innerHTML = `
+      <video src="${url}" controls style="width:100%;max-height:360px;border-radius:16px;background:#000"></video>
+    `;
+    return;
+  }
+
+  if(type === "audio"){
+    sourcePreviewBox.innerHTML = `
+      <audio src="${url}" controls style="width:100%"></audio>
+    `;
+    return;
+  }
+
+  sourcePreviewBox.innerHTML = `
+    <div class="result">
+      <div>
+        <b>Preview extern</b>
+        <div class="small">${url}</div>
+        <button onclick="window.open('${url}','_blank')">Deschide</button>
+      </div>
+    </div>
+  `;
+}
+
+async function normalizeSelectedSources(){
+  const contentId = sourceContentSelect.value;
+  if(!contentId) return alert("Alege content.");
+
+  const res = await fetch("/content-links/"+contentId);
+  const links = await res.json();
+
+  for(const link of links){
+    await fetch("/content-links/normalize/"+link.id,{method:"POST"});
+  }
+
+  alert("Surse normalizate!");
+  loadUniversalSources();
+}
+
+async function previewPrimarySource(){
+  const id = sourceContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/content-play/"+id);
+  const data = await res.json();
+
+  const src = data.primary || data.trailer;
+  if(!src) return alert("Nu există surse.");
+
+  renderSourcePreview(src.normalized_url || src.url, src.detected_type || src.source_type);
 }
 
 async function loadUniversalSources(){

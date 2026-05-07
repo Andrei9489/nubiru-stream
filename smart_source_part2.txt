@@ -1,0 +1,105 @@
+app.post("/sources/analyze", async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: "url required" });
+    }
+
+    res.json(buildSourceAnalysis(url));
+  } catch (err) {
+    res.status(500).json({ error: "Source analyze error", details: err.message });
+  }
+});
+
+app.post("/content-links/normalize/:id", async (req, res) => {
+  try {
+    const linkResult = await pool.query(
+      "SELECT * FROM content_links WHERE id=$1",
+      [req.params.id]
+    );
+
+    const link = linkResult.rows[0];
+
+    if (!link) {
+      return res.status(404).json({ error: "Link not found" });
+    }
+
+    const analysis = buildSourceAnalysis(link.url);
+
+    const updated = await pool.query(
+      `UPDATE content_links
+       SET url=$1, source_type=$2
+       WHERE id=$3
+       RETURNING *`,
+      [
+        analysis.normalized_url,
+        analysis.source_type,
+        req.params.id
+      ]
+    );
+
+    res.json({
+      ok: true,
+      analysis,
+      link: updated.rows[0]
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Normalize link error", details: err.message });
+  }
+});
+
+app.get("/content-play/:contentId", async (req, res) => {
+  try {
+    const content = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    if (!content.rows[0]) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const links = await pool.query(
+      `SELECT *
+       FROM content_links
+       WHERE content_id=$1
+       ORDER BY is_primary DESC, is_trailer ASC, sort_order ASC, created_at ASC`,
+      [req.params.contentId]
+    );
+
+    const normalizedLinks = links.rows.map(link => {
+      const analysis = buildSourceAnalysis(link.url);
+
+      return {
+        ...link,
+        normalized_url: analysis.normalized_url,
+        detected_type: analysis.source_type,
+        can_embed: analysis.can_embed,
+        can_html5: analysis.can_html5,
+        is_stream: analysis.is_stream,
+        is_audio: analysis.is_audio
+      };
+    });
+
+    const primary =
+      normalizedLinks.find(x => x.is_primary && !x.is_trailer) ||
+      normalizedLinks.find(x => !x.is_trailer) ||
+      normalizedLinks[0] ||
+      null;
+
+    const trailer =
+      normalizedLinks.find(x => x.is_trailer) ||
+      null;
+
+    res.json({
+      content: content.rows[0],
+      primary,
+      trailer,
+      sources: normalizedLinks
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Content play error", details: err.message });
+  }
+});
+

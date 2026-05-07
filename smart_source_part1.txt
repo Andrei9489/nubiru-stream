@@ -1,0 +1,82 @@
+/* SMART SOURCE ENGINE MAX */
+function detectSourceType(url = "") {
+  const u = String(url).toLowerCase();
+
+  if (u.includes("<iframe")) return "iframe";
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes(".m3u8")) return "m3u8";
+  if (u.includes(".mp4")) return "mp4";
+  if (u.includes(".mp3") || u.includes(".wav") || u.includes(".aac")) return "audio";
+  if (u.includes("vimeo.com")) return "vimeo";
+  if (u.includes("dailymotion.com")) return "dailymotion";
+
+  return "external";
+}
+
+function normalizeSourceUrl(url = "") {
+  let raw = String(url || "").trim();
+
+  if (!raw) return "";
+
+  if (raw.includes("<iframe")) {
+    const match = raw.match(/src=["']([^"']+)["']/);
+    return match ? match[1] : raw;
+  }
+
+  try {
+    if (raw.includes("youtube.com/watch")) {
+      const parsed = new URL(raw);
+      const id = parsed.searchParams.get("v");
+      return id ? "https://www.youtube.com/embed/" + id : raw;
+    }
+
+    if (raw.includes("youtu.be/")) {
+      const id = raw.split("youtu.be/")[1].split("?")[0].split("&")[0];
+      return id ? "https://www.youtube.com/embed/" + id : raw;
+    }
+
+    if (raw.includes("youtube.com/shorts/")) {
+      const id = raw.split("/shorts/")[1].split("?")[0].split("&")[0];
+      return id ? "https://www.youtube.com/embed/" + id : raw;
+    }
+
+    if (raw.includes("vimeo.com/") && !raw.includes("player.vimeo.com")) {
+      const id = raw.split("vimeo.com/")[1].split("?")[0];
+      return id ? "https://player.vimeo.com/video/" + id : raw;
+    }
+
+    if (raw.includes("dailymotion.com/video/")) {
+      const id = raw.split("/video/")[1].split("?")[0];
+      return id ? "https://www.dailymotion.com/embed/video/" + id : raw;
+    }
+  } catch (e) {}
+
+  return raw;
+}
+
+function sourceCanEmbed(type) {
+  return ["iframe", "youtube", "vimeo", "dailymotion"].includes(type);
+}
+
+function sourceCanHtml5(type) {
+  return ["mp4", "m3u8", "audio"].includes(type);
+}
+
+function buildSourceAnalysis(url = "") {
+  const detected_type = detectSourceType(url);
+  const normalized_url = normalizeSourceUrl(url);
+  const normalized_type = detectSourceType(normalized_url);
+
+  return {
+    original_url: url,
+    normalized_url,
+    detected_type,
+    source_type: normalized_type,
+    can_embed: sourceCanEmbed(normalized_type),
+    can_html5: sourceCanHtml5(normalized_type),
+    is_youtube: normalized_type === "youtube",
+    is_stream: normalized_type === "m3u8",
+    is_audio: normalized_type === "audio"
+  };
+}
+

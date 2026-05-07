@@ -1554,6 +1554,195 @@ app.get("/ai/commands", async (req, res) => {
 
 /* GRAPH ROUTES PART 2 */
 
+/* SMART SOURCE ENGINE MAX */
+function detectSourceType(url = "") {
+  const u = String(url).toLowerCase();
+
+  if (u.includes("<iframe")) return "iframe";
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes(".m3u8")) return "m3u8";
+  if (u.includes(".mp4")) return "mp4";
+  if (u.includes(".mp3") || u.includes(".wav") || u.includes(".aac")) return "audio";
+  if (u.includes("vimeo.com")) return "vimeo";
+  if (u.includes("dailymotion.com")) return "dailymotion";
+
+  return "external";
+}
+
+function normalizeSourceUrl(url = "") {
+  let raw = String(url || "").trim();
+
+  if (!raw) return "";
+
+  if (raw.includes("<iframe")) {
+    const match = raw.match(/src=["']([^"']+)["']/);
+    return match ? match[1] : raw;
+  }
+
+  try {
+    if (raw.includes("youtube.com/watch")) {
+      const parsed = new URL(raw);
+      const id = parsed.searchParams.get("v");
+      return id ? "https://www.youtube.com/embed/" + id : raw;
+    }
+
+    if (raw.includes("youtu.be/")) {
+      const id = raw.split("youtu.be/")[1].split("?")[0].split("&")[0];
+      return id ? "https://www.youtube.com/embed/" + id : raw;
+    }
+
+    if (raw.includes("youtube.com/shorts/")) {
+      const id = raw.split("/shorts/")[1].split("?")[0].split("&")[0];
+      return id ? "https://www.youtube.com/embed/" + id : raw;
+    }
+
+    if (raw.includes("vimeo.com/") && !raw.includes("player.vimeo.com")) {
+      const id = raw.split("vimeo.com/")[1].split("?")[0];
+      return id ? "https://player.vimeo.com/video/" + id : raw;
+    }
+
+    if (raw.includes("dailymotion.com/video/")) {
+      const id = raw.split("/video/")[1].split("?")[0];
+      return id ? "https://www.dailymotion.com/embed/video/" + id : raw;
+    }
+  } catch (e) {}
+
+  return raw;
+}
+
+function sourceCanEmbed(type) {
+  return ["iframe", "youtube", "vimeo", "dailymotion"].includes(type);
+}
+
+function sourceCanHtml5(type) {
+  return ["mp4", "m3u8", "audio"].includes(type);
+}
+
+function buildSourceAnalysis(url = "") {
+  const detected_type = detectSourceType(url);
+  const normalized_url = normalizeSourceUrl(url);
+  const normalized_type = detectSourceType(normalized_url);
+
+  return {
+    original_url: url,
+    normalized_url,
+    detected_type,
+    source_type: normalized_type,
+    can_embed: sourceCanEmbed(normalized_type),
+    can_html5: sourceCanHtml5(normalized_type),
+    is_youtube: normalized_type === "youtube",
+    is_stream: normalized_type === "m3u8",
+    is_audio: normalized_type === "audio"
+  };
+}
+
+
+app.post("/sources/analyze", async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: "url required" });
+    }
+
+    res.json(buildSourceAnalysis(url));
+  } catch (err) {
+    res.status(500).json({ error: "Source analyze error", details: err.message });
+  }
+});
+
+app.post("/content-links/normalize/:id", async (req, res) => {
+  try {
+    const linkResult = await pool.query(
+      "SELECT * FROM content_links WHERE id=$1",
+      [req.params.id]
+    );
+
+    const link = linkResult.rows[0];
+
+    if (!link) {
+      return res.status(404).json({ error: "Link not found" });
+    }
+
+    const analysis = buildSourceAnalysis(link.url);
+
+    const updated = await pool.query(
+      `UPDATE content_links
+       SET url=$1, source_type=$2
+       WHERE id=$3
+       RETURNING *`,
+      [
+        analysis.normalized_url,
+        analysis.source_type,
+        req.params.id
+      ]
+    );
+
+    res.json({
+      ok: true,
+      analysis,
+      link: updated.rows[0]
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Normalize link error", details: err.message });
+  }
+});
+
+app.get("/content-play/:contentId", async (req, res) => {
+  try {
+    const content = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    if (!content.rows[0]) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const links = await pool.query(
+      `SELECT *
+       FROM content_links
+       WHERE content_id=$1
+       ORDER BY is_primary DESC, is_trailer ASC, sort_order ASC, created_at ASC`,
+      [req.params.contentId]
+    );
+
+    const normalizedLinks = links.rows.map(link => {
+      const analysis = buildSourceAnalysis(link.url);
+
+      return {
+        ...link,
+        normalized_url: analysis.normalized_url,
+        detected_type: analysis.source_type,
+        can_embed: analysis.can_embed,
+        can_html5: analysis.can_html5,
+        is_stream: analysis.is_stream,
+        is_audio: analysis.is_audio
+      };
+    });
+
+    const primary =
+      normalizedLinks.find(x => x.is_primary && !x.is_trailer) ||
+      normalizedLinks.find(x => !x.is_trailer) ||
+      normalizedLinks[0] ||
+      null;
+
+    const trailer =
+      normalizedLinks.find(x => x.is_trailer) ||
+      null;
+
+    res.json({
+      content: content.rows[0],
+      primary,
+      trailer,
+      sources: normalizedLinks
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Content play error", details: err.message });
+  }
+});
+
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });
