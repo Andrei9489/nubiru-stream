@@ -997,6 +997,210 @@ app.post("/tmdb/import-tv", async (req, res) => {
   }
 });
 
+
+/* UNIVERSAL CONTENT PARTS */
+app.post("/content-parts", async (req, res) => {
+  try {
+    const b = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO content_parts
+      (content_id, part_number, title, description, poster_url, duration_seconds)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (content_id, part_number)
+      DO UPDATE SET
+        title=$3,
+        description=$4,
+        poster_url=$5,
+        duration_seconds=$6
+      RETURNING *`,
+      [
+        b.content_id,
+        b.part_number || 1,
+        b.title,
+        b.description,
+        b.poster_url,
+        b.duration_seconds || 0,
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Content part error", details: err.message });
+  }
+});
+
+app.get("/content-parts/:contentId", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM content_parts WHERE content_id=$1 ORDER BY part_number ASC",
+      [req.params.contentId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Get content parts error", details: err.message });
+  }
+});
+
+app.delete("/content-parts/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM content_parts WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Delete content part error", details: err.message });
+  }
+});
+
+/* UNIVERSAL CONTENT LINKS */
+app.post("/content-links", async (req, res) => {
+  try {
+    const b = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO content_links
+      (
+        content_id, part_id, episode_id, label, url,
+        source_type, language, quality, is_primary, is_trailer, sort_order
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      RETURNING *`,
+      [
+        b.content_id,
+        b.part_id || null,
+        b.episode_id || null,
+        b.label || "",
+        b.url,
+        b.source_type || "iframe",
+        b.language || "",
+        b.quality || "",
+        b.is_primary || false,
+        b.is_trailer || false,
+        b.sort_order || 0,
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Content link error", details: err.message });
+  }
+});
+
+app.get("/content-links/:contentId", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT *
+       FROM content_links
+       WHERE content_id=$1
+       ORDER BY is_primary DESC, sort_order ASC, created_at ASC`,
+      [req.params.contentId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Get content links error", details: err.message });
+  }
+});
+
+app.delete("/content-links/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM content_links WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Delete content link error", details: err.message });
+  }
+});
+
+app.post("/content-links/bulk", async (req, res) => {
+  try {
+    const { content_id, links } = req.body;
+
+    if (!content_id || !Array.isArray(links)) {
+      return res.status(400).json({ error: "content_id and links array required" });
+    }
+
+    const saved = [];
+
+    for (let i = 0; i < links.length; i++) {
+      const l = links[i];
+
+      if (!l.url) continue;
+
+      const result = await pool.query(
+        `INSERT INTO content_links
+        (
+          content_id, part_id, episode_id, label, url,
+          source_type, language, quality, is_primary, is_trailer, sort_order
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        RETURNING *`,
+        [
+          content_id,
+          l.part_id || null,
+          l.episode_id || null,
+          l.label || `Sursă ${i + 1}`,
+          l.url,
+          l.source_type || "iframe",
+          l.language || "",
+          l.quality || "",
+          l.is_primary || i === 0,
+          l.is_trailer || false,
+          l.sort_order || i,
+        ]
+      );
+
+      saved.push(result.rows[0]);
+    }
+
+    res.json({ ok: true, count: saved.length, links: saved });
+  } catch (err) {
+    res.status(500).json({ error: "Bulk content links error", details: err.message });
+  }
+});
+
+app.get("/content-full/:contentId", async (req, res) => {
+  try {
+    const content = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [req.params.contentId]
+    );
+
+    if (!content.rows[0]) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const parts = await pool.query(
+      "SELECT * FROM content_parts WHERE content_id=$1 ORDER BY part_number ASC",
+      [req.params.contentId]
+    );
+
+    const links = await pool.query(
+      "SELECT * FROM content_links WHERE content_id=$1 ORDER BY is_primary DESC, sort_order ASC",
+      [req.params.contentId]
+    );
+
+    const seasons = await pool.query(
+      "SELECT * FROM seasons WHERE content_id=$1 ORDER BY season_number ASC",
+      [req.params.contentId]
+    );
+
+    const episodes = await pool.query(
+      "SELECT * FROM episodes WHERE content_id=$1 ORDER BY season_number ASC, episode_number ASC",
+      [req.params.contentId]
+    );
+
+    res.json({
+      content: content.rows[0],
+      parts: parts.rows,
+      links: links.rows,
+      seasons: seasons.rows,
+      episodes: episodes.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Content full error", details: err.message });
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });
