@@ -26,6 +26,18 @@ a{color:white}
 <h1>Nubiru Stream Admin PRO</h1>
 <p><a href="/">← Platformă</a></p>
 
+
+<div class="box">
+<h2>AI Metadata</h2>
+<p class="small">ON = completează automat metadata. OFF = controlezi manual tot.</p>
+<div class="grid">
+<button onclick="toggleAiMetadata(true)">AI Metadata ON</button>
+<button onclick="toggleAiMetadata(false)">AI Metadata OFF</button>
+<button onclick="autoFillAiMetadata()">Completează automat din AI</button>
+</div>
+<div id="aiStatus" class="small">Se verifică AI Metadata...</div>
+</div>
+
 <div class="box">
 <h2>Caută metadata</h2>
 <div class="grid">
@@ -401,7 +413,61 @@ form.addEventListener("submit", async e=>{
   if(res.ok){
     alert(id ? "Actualizat!" : "Salvat!");
     resetForm();
-    loadContent();
+    
+async function loadAiStatus(){
+  try{
+    const res = await fetch("/settings/ai-metadata");
+    const data = await res.json();
+    aiStatus.innerHTML = data.enabled ? "AI Metadata: ON ✅" : "AI Metadata: OFF ❌";
+  }catch(e){
+    aiStatus.innerHTML = "AI Metadata: eroare verificare";
+  }
+}
+
+async function toggleAiMetadata(enabled){
+  const res = await fetch("/settings/ai-metadata",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({enabled})
+  });
+
+  const data = await res.json();
+  aiStatus.innerHTML = data.enabled ? "AI Metadata: ON ✅" : "AI Metadata: OFF ❌";
+}
+
+async function autoFillAiMetadata(){
+  const title = form.title.value || metadataQuery.value;
+  if(!title) return alert("Scrie un titlu în formular sau în search metadata.");
+
+  aiStatus.innerHTML = "AI caută metadata...";
+
+  const res = await fetch("/ai/metadata",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      title,
+      type: form.type.value || "movie"
+    })
+  });
+
+  const data = await res.json();
+
+  if(!res.ok){
+    aiStatus.innerHTML = "AI Metadata eroare";
+    return alert(data.details || data.error || "AI error");
+  }
+
+  if(!data.enabled){
+    aiStatus.innerHTML = "AI Metadata este OFF ❌";
+    return alert("AI Metadata este OFF. Pornește-l întâi.");
+  }
+
+  fillForm(data.metadata);
+  aiStatus.innerHTML = "AI Metadata aplicat ✅";
+}
+
+loadAiStatus();
+loadContent();
   } else {
     alert("Eroare: " + result.details);
   }
@@ -463,7 +529,61 @@ function editItem(item){
 async function deleteItem(id){
   if(!confirm("Ștergi acest conținut?")) return;
   await fetch("/content/"+id,{method:"DELETE"});
-  loadContent();
+  
+async function loadAiStatus(){
+  try{
+    const res = await fetch("/settings/ai-metadata");
+    const data = await res.json();
+    aiStatus.innerHTML = data.enabled ? "AI Metadata: ON ✅" : "AI Metadata: OFF ❌";
+  }catch(e){
+    aiStatus.innerHTML = "AI Metadata: eroare verificare";
+  }
+}
+
+async function toggleAiMetadata(enabled){
+  const res = await fetch("/settings/ai-metadata",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({enabled})
+  });
+
+  const data = await res.json();
+  aiStatus.innerHTML = data.enabled ? "AI Metadata: ON ✅" : "AI Metadata: OFF ❌";
+}
+
+async function autoFillAiMetadata(){
+  const title = form.title.value || metadataQuery.value;
+  if(!title) return alert("Scrie un titlu în formular sau în search metadata.");
+
+  aiStatus.innerHTML = "AI caută metadata...";
+
+  const res = await fetch("/ai/metadata",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      title,
+      type: form.type.value || "movie"
+    })
+  });
+
+  const data = await res.json();
+
+  if(!res.ok){
+    aiStatus.innerHTML = "AI Metadata eroare";
+    return alert(data.details || data.error || "AI error");
+  }
+
+  if(!data.enabled){
+    aiStatus.innerHTML = "AI Metadata este OFF ❌";
+    return alert("AI Metadata este OFF. Pornește-l întâi.");
+  }
+
+  fillForm(data.metadata);
+  aiStatus.innerHTML = "AI Metadata aplicat ✅";
+}
+
+loadAiStatus();
+loadContent();
 }
 
 /* EPISODES ADMIN */
@@ -567,6 +687,60 @@ async function deleteEpisode(id){
   loadEpisodesForSelected();
 }
 
+
+async function loadAiStatus(){
+  try{
+    const res = await fetch("/settings/ai-metadata");
+    const data = await res.json();
+    aiStatus.innerHTML = data.enabled ? "AI Metadata: ON ✅" : "AI Metadata: OFF ❌";
+  }catch(e){
+    aiStatus.innerHTML = "AI Metadata: eroare verificare";
+  }
+}
+
+async function toggleAiMetadata(enabled){
+  const res = await fetch("/settings/ai-metadata",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({enabled})
+  });
+
+  const data = await res.json();
+  aiStatus.innerHTML = data.enabled ? "AI Metadata: ON ✅" : "AI Metadata: OFF ❌";
+}
+
+async function autoFillAiMetadata(){
+  const title = form.title.value || metadataQuery.value;
+  if(!title) return alert("Scrie un titlu în formular sau în search metadata.");
+
+  aiStatus.innerHTML = "AI caută metadata...";
+
+  const res = await fetch("/ai/metadata",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      title,
+      type: form.type.value || "movie"
+    })
+  });
+
+  const data = await res.json();
+
+  if(!res.ok){
+    aiStatus.innerHTML = "AI Metadata eroare";
+    return alert(data.details || data.error || "AI error");
+  }
+
+  if(!data.enabled){
+    aiStatus.innerHTML = "AI Metadata este OFF ❌";
+    return alert("AI Metadata este OFF. Pornește-l întâi.");
+  }
+
+  fillForm(data.metadata);
+  aiStatus.innerHTML = "AI Metadata aplicat ✅";
+}
+
+loadAiStatus();
 loadContent();
 </script>
 </body>
