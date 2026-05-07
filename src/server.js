@@ -699,6 +699,123 @@ app.get("/metadata/sport", async (req, res) => {
   res.json(response.data.teams || []);
 });
 
+
+/* AI METADATA SETTINGS */
+app.get("/settings/ai-metadata", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT value FROM app_settings WHERE key='ai_metadata_enabled'"
+    );
+    res.json({ enabled: result.rows[0]?.value === "true" });
+  } catch (err) {
+    res.status(500).json({ error: "AI setting error", details: err.message });
+  }
+});
+
+app.post("/settings/ai-metadata", async (req, res) => {
+  try {
+    const enabled = req.body.enabled === true ? "true" : "false";
+
+    const result = await pool.query(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ('ai_metadata_enabled', $1, NOW())
+       ON CONFLICT (key)
+       DO UPDATE SET value=$1, updated_at=NOW()
+       RETURNING *`,
+      [enabled]
+    );
+
+    res.json({ enabled: result.rows[0].value === "true" });
+  } catch (err) {
+    res.status(500).json({ error: "AI setting save error", details: err.message });
+  }
+});
+
+/* AI METADATA ENGINE */
+app.post("/ai/metadata", async (req, res) => {
+  try {
+    const { title, type } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ error: "Title required" });
+    }
+
+    const setting = await pool.query(
+      "SELECT value FROM app_settings WHERE key='ai_metadata_enabled'"
+    );
+
+    const enabled = setting.rows[0]?.value === "true";
+
+    if (!enabled) {
+      return res.json({
+        enabled: false,
+        message: "AI Metadata is OFF. Manual control active.",
+        metadata: {}
+      });
+    }
+
+    let metadata = {
+      title,
+      type: type || "movie",
+      tags: "ai-metadata",
+    };
+
+    try {
+      const tmdb = await axios.get("https://api.themoviedb.org/3/search/multi", {
+        params: {
+          api_key: process.env.TMDB_API_KEY,
+          query: title,
+          language: "ro-RO",
+        },
+      });
+
+      const item = tmdb.data.results?.[0];
+
+      if (item) {
+        metadata.title = item.title || item.name || title;
+        metadata.description = item.overview || "";
+        metadata.poster_url = item.poster_path
+          ? "https://image.tmdb.org/t/p/w500" + item.poster_path
+          : "";
+        metadata.backdrop_url = item.backdrop_path
+          ? "https://image.tmdb.org/t/p/original" + item.backdrop_path
+          : "";
+        metadata.year = Number((item.release_date || item.first_air_date || "").slice(0, 4)) || null;
+        metadata.type = item.media_type === "tv" ? "series" : "movie";
+        metadata.category = item.media_type === "tv" ? "Seriale" : "Filme";
+        metadata.tmdb_id = String(item.id || "");
+        metadata.popularity = Math.round(item.popularity || 0);
+        metadata.rating = item.vote_average ? String(item.vote_average) : "";
+      }
+    } catch (e) {}
+
+    try {
+      const yt = await axios.get("https://www.googleapis.com/youtube/v3/search", {
+        params: {
+          key: process.env.YOUTUBE_API_KEY.trim(),
+          q: metadata.title + " official trailer",
+          part: "snippet",
+          type: "video",
+          maxResults: 1,
+        },
+      });
+
+      const videoId = yt.data.items?.[0]?.id?.videoId;
+      if (videoId) {
+        metadata.youtube_trailer = "https://www.youtube.com/embed/" + videoId;
+        metadata.iframe_url = metadata.iframe_url || metadata.youtube_trailer;
+      }
+    } catch (e) {}
+
+    res.json({
+      enabled: true,
+      metadata
+    });
+  } catch (err) {
+    res.status(500).json({ error: "AI metadata error", details: err.message });
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });
