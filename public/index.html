@@ -538,31 +538,6 @@ function getPlayable(item){
 }
 
 
-let currentSources=[];
-
-function renderPlayerSources(sources=[]){
-  currentSources = sources || [];
-  const box = document.getElementById("playerSources");
-  if(!box) return;
-
-  box.innerHTML = currentSources.map((src,i)=>`
-    <button onclick="switchPlayerSource(${i})">
-      ${src.is_trailer ? "Trailer" : (src.label || "Server "+(i+1))}
-      ${src.quality ? " - "+src.quality : ""}
-      ${src.language ? " - "+src.language : ""}
-    </button>
-  `).join("");
-}
-
-function switchPlayerSource(index){
-  const src = currentSources[index];
-  if(!src) return;
-
-  const url = src.normalized_url || src.url;
-  playerTitle.innerText = (currentItem?.title || "Player") + " - " + (src.label || src.detected_type || src.source_type || "Source");
-  playerFrame.src = toEmbed(url);
-}
-
 async function getSmartPlay(item){
   try{
     const res = await fetch("/content-play/"+item.id);
@@ -610,7 +585,6 @@ async function playItem(item){
   currentItem=item;
   playerTitle.innerText=item.title + " - " + (source.label || "Play");
   playerFrame.src=toEmbed(url);
-  renderPlayerSources(source.sources || []);
   player.style.display="block";
   fetch("/content/"+item.id+"/view",{method:"POST"});
 }
@@ -656,8 +630,6 @@ function toEmbed(url){
 
 function closePlayer(){
   playerFrame.src="";
-  const box = document.getElementById("playerSources");
-  if(box) box.innerHTML="";
   player.style.display="none";
 }
 
