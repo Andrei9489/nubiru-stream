@@ -29,6 +29,22 @@ a{color:white}
 
 
 
+
+<div class="box">
+<h2>AI Semantic Studio</h2>
+<p class="small">Semantic AI: emoții, keywords, similar content și recomandări inteligente.</p>
+
+<div class="grid">
+<select id="semanticContentSelect"></select>
+<button onclick="buildSemanticSelected()">Build Semantic</button>
+<button onclick="rebuildSemanticAll()">Rebuild All Semantic</button>
+<button onclick="viewSemanticSelected()">View Semantic</button>
+<button onclick="loadSimilarSelected()">Similar AI</button>
+</div>
+
+<div id="semanticResult"></div>
+</div>
+
 <div class="box">
 <h2>Universal Source Studio</h2>
 <p class="small">Adaugă surse pentru orice content: film, serial, anime, sport, muzică, entertainment.</p>
@@ -566,6 +582,78 @@ async function runAiCommand(){
   const data = await res.json();
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -798,6 +886,78 @@ async function rebuildQuality(){
 
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -1053,6 +1213,78 @@ async function buildGraphForContent(){
 
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -1298,6 +1530,78 @@ async function loadGraphForContent(){
   `;
 }
 
+
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
 
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
@@ -1543,6 +1847,9 @@ async function loadContent(){
   updateEpisodeContentSelect(items);
   if(typeof updateSourceContentSelect === "function"){
     updateSourceContentSelect();
+    if(typeof updateSemanticContentSelect === "function"){
+      updateSemanticContentSelect();
+    }
   }
 
   list.innerHTML = items.map(item=>`
@@ -1656,6 +1963,78 @@ async function runAiCommand(){
   const data = await res.json();
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -1888,6 +2267,78 @@ async function rebuildQuality(){
 
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -2143,6 +2594,78 @@ async function buildGraphForContent(){
 
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -2388,6 +2911,78 @@ async function loadGraphForContent(){
   `;
 }
 
+
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
 
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
@@ -2785,6 +3380,78 @@ async function runAiCommand(){
   const data = await res.json();
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -3017,6 +3684,78 @@ async function rebuildQuality(){
 
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -3272,6 +4011,78 @@ async function buildGraphForContent(){
 
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
+
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
@@ -3517,6 +4328,78 @@ async function loadGraphForContent(){
   `;
 }
 
+
+
+function updateSemanticContentSelect(){
+  if(typeof allContent === "undefined" || !allContent.length) return;
+  semanticContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+async function buildSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  semanticResult.innerHTML = "AI construiește semantic...";
+  const res = await fetch("/ai/semantic/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function rebuildSemanticAll(){
+  semanticResult.innerHTML = "AI reconstruiește semantic pentru tot catalogul...";
+  const res = await fetch("/ai/semantic/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  semanticResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+}
+
+async function viewSemanticSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/semantic/"+id);
+  const data = await res.json();
+
+  const emb = data.embeddings?.[0];
+
+  semanticResult.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <div class="small">AI Score: ${emb?.ai_score ?? "N/A"}</div>
+        <div class="small">Emotions: ${emb?.emotions || "N/A"}</div>
+        <div class="small">Summary: ${emb?.summary || ""}</div>
+        <h4>Semantic Tags</h4>
+        ${(data.semantic_tags||[]).map(t=>`<span class="small">#${t.tag} (${t.tag_group}) </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+async function loadSimilarSelected(){
+  const id = semanticContentSelect.value;
+  if(!id) return alert("Alege content.");
+
+  const res = await fetch("/ai/similar/"+id);
+  const data = await res.json();
+
+  semanticResult.innerHTML = `
+    <h3>Similar AI</h3>
+    ${(data.similar||[]).map(x=>`
+      <div class="result">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div>
+          <b>${x.title}</b>
+          <div class="small">ID: ${x.content_id} | ${x.category || ""} | ${x.type || ""} | ${x.year || ""}</div>
+          <div class="small">Similarity Score: ${x.score}</div>
+          <div class="small">Emotions: ${(x.emotions||[]).join(", ")}</div>
+          <div class="small">Reason: ${x.reason}</div>
+        </div>
+      </div>
+    `).join("") || "Nu există similar content încă."}
+  `;
+}
 
 function updateSourceContentSelect(){
   if(typeof allContent === "undefined" || !allContent.length) return;
