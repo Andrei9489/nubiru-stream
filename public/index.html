@@ -3,127 +3,441 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nubiru Stream Episodes</title>
+<title>Nubiru Stream</title>
+
 <style>
 *{box-sizing:border-box}
-body{margin:0;font-family:Arial;background:#050712;color:white}
-.app{display:flex;min-height:100vh}
-.sidebar{width:260px;background:#080b16;padding:18px;position:fixed;top:0;bottom:0;overflow:auto}
-.logo{font-size:26px;font-weight:bold;color:#8b5cf6;margin-bottom:20px}
-.sidebar button{display:block;width:100%;margin-bottom:8px;text-align:left;background:#111827;color:white;border:0;border-radius:12px;padding:12px;cursor:pointer}
-.sidebar button:hover{background:#8b5cf6}
-.main{margin-left:260px;width:calc(100% - 260px)}
-.topbar{position:sticky;top:0;background:rgba(5,7,18,.95);z-index:50;padding:14px}
-.gridTop{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px}
-input,button,select{padding:11px;border-radius:10px;border:0}
-input,select{background:#1f2937;color:white}
-button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
-.hero{min-height:390px;padding:60px 30px;background:linear-gradient(90deg,#111827,#050712);display:flex;align-items:end}
-.hero h1{font-size:46px;margin:0}
-.hero p{max-width:760px;color:#d1d5db}
-.section{padding:22px}
-.rail{display:flex;gap:16px;overflow-x:auto;padding-bottom:14px}
-.card{min-width:190px;width:190px;background:#111827;border-radius:16px;overflow:hidden;cursor:pointer}
-.card img{width:100%;height:285px;object-fit:cover;background:#222}
-.cardInfo{padding:10px}
-.small{color:#cbd5e1;font-size:13px}
-.player{display:none;position:fixed;inset:0;background:#000;z-index:200}
-.playerTop{position:absolute;top:0;left:0;right:0;padding:18px;z-index:210;display:flex;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,.9),transparent)}
-.player iframe{width:100%;height:100%;border:0}
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;place-items:center}
-.modalBox{background:#111827;padding:22px;border-radius:18px;width:90%;max-width:760px;display:grid;gap:10px;max-height:90vh;overflow:auto}
-.episode{background:#1f2937;padding:12px;border-radius:12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px}
-.error{color:#f87171}.success{color:#4ade80}
-@media(max-width:900px){.app{display:block}.sidebar{position:relative;width:100%}.main{margin-left:0;width:100%}.gridTop{grid-template-columns:1fr}.hero h1{font-size:32px}}
+
+body{
+  margin:0;
+  font-family:Arial, sans-serif;
+  background:#050712;
+  color:white;
+}
+
+.app{
+  display:flex;
+  min-height:100vh;
+}
+
+.sidebar{
+  width:260px;
+  background:#080b16;
+  padding:18px;
+  position:fixed;
+  top:0;
+  bottom:0;
+  overflow:auto;
+  z-index:20;
+}
+
+.logo{
+  font-size:28px;
+  font-weight:bold;
+  color:#8b5cf6;
+  margin-bottom:20px;
+}
+
+.sidebar button,
+.sidebar a{
+  display:block;
+  width:100%;
+  margin-bottom:10px;
+  text-align:left;
+  background:#111827;
+  color:white;
+  border:0;
+  border-radius:16px;
+  padding:14px;
+  cursor:pointer;
+  font-size:16px;
+  text-decoration:none;
+  font-weight:bold;
+}
+
+.sidebar button:hover{
+  background:#8b5cf6;
+}
+
+.main{
+  margin-left:260px;
+  width:calc(100% - 260px);
+}
+
+.topbar{
+  position:sticky;
+  top:0;
+  background:rgba(5,7,18,.96);
+  backdrop-filter:blur(12px);
+  z-index:15;
+  padding:14px;
+}
+
+.gridTop{
+  display:grid;
+  grid-template-columns:2fr 1fr 1fr 1fr auto;
+  gap:10px;
+}
+
+input,button,select{
+  padding:12px;
+  border-radius:14px;
+  border:0;
+  font-size:15px;
+}
+
+input,select{
+  background:#1f2937;
+  color:white;
+}
+
+button{
+  background:#8b5cf6;
+  color:white;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+.hero{
+  min-height:360px;
+  padding:60px 30px;
+  background:linear-gradient(90deg,#111827,#050712);
+  display:flex;
+  align-items:end;
+}
+
+.hero h1{
+  font-size:46px;
+  margin:0;
+}
+
+.hero p{
+  max-width:760px;
+  color:#d1d5db;
+  font-size:18px;
+}
+
+.heroActions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.section{
+  padding:22px;
+}
+
+.section h2{
+  font-size:34px;
+  margin:0 0 22px;
+}
+
+.rail{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:18px;
+}
+
+.card{
+  background:#111827;
+  border-radius:20px;
+  overflow:hidden;
+  cursor:pointer;
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 10px 30px rgba(0,0,0,.25);
+}
+
+.card:hover{
+  transform:scale(1.03);
+}
+
+.poster{
+  width:100%;
+  aspect-ratio:2/3;
+  object-fit:cover;
+  background:#222;
+  display:block;
+}
+
+.cardInfo{
+  padding:12px;
+}
+
+.cardInfo b{
+  display:block;
+  font-size:20px;
+  margin-bottom:6px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.small{
+  color:#cbd5e1;
+  font-size:14px;
+}
+
+.cardButtons{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+}
+
+.cardButtons button{
+  flex:1;
+  padding:10px;
+  border-radius:12px;
+}
+
+.player{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:#000;
+  z-index:200;
+}
+
+.playerTop{
+  position:absolute;
+  top:0;
+  left:0;
+  right:0;
+  padding:18px;
+  z-index:210;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.9),transparent);
+}
+
+.player iframe{
+  width:100%;
+  height:100%;
+  border:0;
+}
+
+.modal{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.75);
+  z-index:300;
+  place-items:center;
+  padding:12px;
+}
+
+.modalBox{
+  background:#111827;
+  padding:22px;
+  border-radius:18px;
+  width:100%;
+  max-width:760px;
+  display:grid;
+  gap:10px;
+  max-height:90vh;
+  overflow:auto;
+}
+
+.episode{
+  background:#1f2937;
+  padding:12px;
+  border-radius:12px;
+  margin-bottom:8px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.error{color:#f87171}
+.success{color:#4ade80}
+
+@media(max-width:900px){
+  .app{
+    display:block;
+  }
+
+  .sidebar{
+    position:relative;
+    width:100%;
+    height:auto;
+    bottom:auto;
+    padding:18px 16px;
+  }
+
+  .main{
+    margin-left:0;
+    width:100%;
+  }
+
+  .topbar{
+    position:relative;
+    padding:16px;
+  }
+
+  .gridTop{
+    grid-template-columns:1fr;
+  }
+
+  input,button,select{
+    font-size:16px;
+    padding:15px;
+  }
+
+  .hero{
+    min-height:300px;
+    padding:44px 24px;
+  }
+
+  .hero h1{
+    font-size:40px;
+  }
+
+  .hero p{
+    font-size:17px;
+  }
+
+  .section{
+    padding:18px 16px;
+  }
+
+  .section h2{
+    font-size:32px;
+  }
+
+  .rail{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:14px;
+  }
+
+  .cardInfo b{
+    font-size:18px;
+  }
+
+  .small{
+    font-size:13px;
+  }
+
+  .cardButtons{
+    gap:6px;
+  }
+
+  .cardButtons button{
+    min-width:0;
+    padding:10px 6px;
+    font-size:18px;
+  }
+
+  .playerTop{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+}
+
+@media(max-width:420px){
+  .rail{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+  }
+
+  .hero h1{
+    font-size:34px;
+  }
+
+  .logo{
+    font-size:30px;
+  }
+}
 </style>
 </head>
+
 <body>
 
 <div class="app">
 <aside class="sidebar">
-<div class="logo">Nubiru Stream</div>
-<div id="userBox"></div>
-<button onclick="showSection('home')">Acasă</button>
-<button onclick="showSection('watchlist')">❤️ Watchlist</button>
-<button onclick="showSection('history')">▶ Continue Watching</button>
-<button onclick="showSection('recommendations')">✨ Pentru tine</button>
-<a href="/admin.html"><button>Admin PRO</button></a>
+  <div class="logo">Nubiru Stream</div>
+  <div id="userBox"></div>
+  <button onclick="showSection('home')">Acasă</button>
+  <button onclick="showSection('watchlist')">❤️ Watchlist</button>
+  <button onclick="showSection('history')">▶ Continue Watching</button>
+  <button onclick="showSection('recommendations')">✨ Pentru tine</button>
+  <a href="/admin.html">Admin PRO</a>
 </aside>
 
 <main class="main">
-<div class="topbar">
-<div class="gridTop">
-<input id="q" placeholder="Caută titlu, actor, regizor...">
-<input id="actor" placeholder="Actor">
-<input id="genre" placeholder="Gen">
-<input id="country" placeholder="Țară">
-<button onclick="search()">Search</button>
-</div>
-</div>
+  <div class="topbar">
+    <div class="gridTop">
+      <input id="q" placeholder="Caută titlu, actor, regizor...">
+      <input id="actor" placeholder="Actor">
+      <input id="genre" placeholder="Gen">
+      <input id="country" placeholder="Țară">
+      <button onclick="search()">Search</button>
+    </div>
+  </div>
 
-<section class="hero" id="hero">
-<div>
-<h1 id="heroTitle">Nubiru Stream</h1>
-<p id="heroDesc">Player cu filme, seriale, sezoane și episoade.</p>
-<button onclick="playHero()">▶ Play</button>
-<button onclick="openEpisodes(heroItem)">📺 Episoade</button>
-<button onclick="addHeroWatchlist()">❤️ Watchlist</button>
-</div>
-</section>
+  <section class="hero" id="hero">
+    <div>
+      <h1 id="heroTitle">Nubiru Stream</h1>
+      <p id="heroDesc">Player cu filme, seriale, sezoane și episoade.</p>
+      <div class="heroActions">
+        <button onclick="playHero()">▶ Play</button>
+        <button onclick="openEpisodes(heroItem)">📺 Episoade</button>
+        <button onclick="addHeroWatchlist()">❤️ Watchlist</button>
+      </div>
+    </div>
+  </section>
 
-<section class="section" id="homeSection">
-<h2>Catalog</h2>
-<div class="rail" id="catalog"></div>
-</section>
+  <section class="section" id="homeSection">
+    <h2>Catalog</h2>
+    <div class="rail" id="catalog"></div>
+  </section>
 
-<section class="section" id="watchlistSection" style="display:none">
-<h2>Watchlist</h2>
-<div class="rail" id="watchlistBox"></div>
-</section>
+  <section class="section" id="watchlistSection" style="display:none">
+    <h2>Watchlist</h2>
+    <div class="rail" id="watchlistBox"></div>
+  </section>
 
-<section class="section" id="historySection" style="display:none">
-<h2>Continue Watching</h2>
-<div class="rail" id="historyBox"></div>
-</section>
+  <section class="section" id="historySection" style="display:none">
+    <h2>Continue Watching</h2>
+    <div class="rail" id="historyBox"></div>
+  </section>
 
-<section class="section" id="recommendationsSection" style="display:none">
-<h2>Pentru tine</h2>
-<div class="rail" id="recommendationsBox"></div>
-</section>
+  <section class="section" id="recommendationsSection" style="display:none">
+    <h2>Pentru tine</h2>
+    <div class="rail" id="recommendationsBox"></div>
+  </section>
 </main>
 </div>
 
 <section class="player" id="player">
-<div class="playerTop">
-<strong id="playerTitle">Player</strong>
-<div>
-<button onclick="saveProgress()">Salvează progres</button>
-<button onclick="closePlayer()">Închide</button>
-</div>
-</div>
-<iframe id="playerFrame" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+  <div class="playerTop">
+    <strong id="playerTitle">Player</strong>
+    <div>
+      <button onclick="saveProgress()">Salvează progres</button>
+      <button onclick="closePlayer()">Închide</button>
+    </div>
+  </div>
+  <iframe id="playerFrame" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
 </section>
 
 <div class="modal" id="authModal">
-<div class="modalBox">
-<h2>Cont Nubiru</h2>
-<div id="authMessage"></div>
-<input id="name" placeholder="Nume">
-<input id="email" placeholder="Email">
-<input id="password" type="password" placeholder="Parolă">
-<button onclick="register()">Creează cont</button>
-<button onclick="login()">Login</button>
-<button onclick="authModal.style.display='none'">Închide</button>
-</div>
+  <div class="modalBox">
+    <h2>Cont Nubiru</h2>
+    <div id="authMessage"></div>
+    <input id="name" placeholder="Nume">
+    <input id="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Parolă">
+    <button onclick="register()">Creează cont</button>
+    <button onclick="login()">Login</button>
+    <button onclick="authModal.style.display='none'">Închide</button>
+  </div>
 </div>
 
 <div class="modal" id="episodesModal">
-<div class="modalBox">
-<h2 id="episodesTitle">Episoade</h2>
-<div id="seasonsBox"></div>
-<div id="episodesBox"></div>
-<button onclick="episodesModal.style.display='none'">Închide</button>
-</div>
+  <div class="modalBox">
+    <h2 id="episodesTitle">Episoade</h2>
+    <div id="seasonsBox"></div>
+    <div id="episodesBox"></div>
+    <button onclick="episodesModal.style.display='none'">Închide</button>
+  </div>
 </div>
 
 <script>
@@ -133,255 +447,309 @@ let items=[];
 let heroItem=null;
 let currentItem=null;
 
+const fallbackPoster = "https://via.placeholder.com/300x450/111827/ffffff?text=Nubiru";
+
+function safeImg(url){
+  if(!url) return fallbackPoster;
+  return url;
+}
+
 function authHeaders(){
-return token?{Authorization:"Bearer "+token,"Content-Type":"application/json"}:{"Content-Type":"application/json"};
+  return token
+    ? {Authorization:"Bearer "+token,"Content-Type":"application/json"}
+    : {"Content-Type":"application/json"};
 }
 
 function showMsg(msg,type="error"){
-authMessage.innerHTML=`<p class="${type}">${msg}</p>`;
+  authMessage.innerHTML=`<p class="${type}">${msg}</p>`;
 }
 
 function renderUser(){
-userBox.innerHTML=user?`
-<p class="small">Salut, ${user.name||user.email}</p>
-<button onclick="logout()">Logout</button>
-`:`<button onclick="openAuth()">Login / Register</button>`;
+  userBox.innerHTML=user
+    ? `<p class="small">Salut, ${user.name||user.email}</p><button onclick="logout()">Logout</button>`
+    : `<button onclick="openAuth()">Login / Register</button>`;
 }
 renderUser();
 
 function openAuth(){
-authMessage.innerHTML="";
-authModal.style.display="grid";
+  authMessage.innerHTML="";
+  authModal.style.display="grid";
 }
 
 async function load(){
-const res=await fetch("/content/search?sort=popular");
-items=await res.json();
-heroItem=items[0];
-renderHero(heroItem);
-catalog.innerHTML=items.map(card).join("");
+  const res=await fetch("/content/search?sort=popular");
+  items=await res.json();
+  heroItem=items[0];
+  renderHero(heroItem);
+  catalog.innerHTML=items.map(card).join("");
 }
 load();
 
 function renderHero(item){
-if(!item)return;
-heroItem=item;
-heroTitle.innerText=item.title;
-heroDesc.innerText=item.description||"";
-hero.style.background=`linear-gradient(90deg,rgba(5,7,18,.95),rgba(5,7,18,.35)),url('${item.backdrop_url||item.poster_url||""}') center/cover`;
+  if(!item)return;
+  heroItem=item;
+  heroTitle.innerText=item.title || "Nubiru Stream";
+  heroDesc.innerText=item.description || "";
+  const bg = item.backdrop_url || item.poster_url || "";
+  hero.style.background = bg
+    ? `linear-gradient(90deg,rgba(5,7,18,.95),rgba(5,7,18,.35)),url('${bg}') center/cover`
+    : `linear-gradient(90deg,#111827,#050712)`;
+}
+
+function escapeJson(obj){
+  return JSON.stringify(obj).replace(/'/g,"&#39;");
 }
 
 function card(item){
-return `
-<div class="card" onclick='openItem(${JSON.stringify(item)})'>
-<img src="${item.poster_url||"https://via.placeholder.com/300x450"}">
-<div class="cardInfo">
-<b>${item.title}</b><br>
-<span class="small">${item.year||""} ${item.genres||item.genre||""}</span><br>
-<button onclick='event.stopPropagation();playItem(${JSON.stringify(item)})'>▶</button>
-<button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(item)})'>📺</button>
-<button onclick='event.stopPropagation();addWatchlist(${item.id})'>❤️</button>
-</div>
-</div>`;
+  return `
+  <div class="card" onclick='openItem(${escapeJson(item)})'>
+    <img class="poster" src="${safeImg(item.poster_url)}" onerror="this.src='${fallbackPoster}'">
+    <div class="cardInfo">
+      <b>${item.title || ""}</b>
+      <span class="small">${item.year || ""} ${item.genres || item.genre || ""}</span>
+      <div class="cardButtons">
+        <button onclick='event.stopPropagation();playItem(${escapeJson(item)})'>▶</button>
+        <button onclick='event.stopPropagation();openEpisodes(${escapeJson(item)})'>📺</button>
+        <button onclick='event.stopPropagation();addWatchlist(${item.id})'>❤️</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 async function search(){
-const p=new URLSearchParams();
-if(q.value)p.set("q",q.value);
-if(actor.value)p.set("actor",actor.value);
-if(genre.value)p.set("genre",genre.value);
-if(country.value)p.set("country",country.value);
-const res=await fetch("/content/search?"+p.toString());
-items=await res.json();
-catalog.innerHTML=items.map(card).join("");
-renderHero(items[0]);
+  const p=new URLSearchParams();
+  if(q.value)p.set("q",q.value);
+  if(actor.value)p.set("actor",actor.value);
+  if(genre.value)p.set("genre",genre.value);
+  if(country.value)p.set("country",country.value);
+
+  const res=await fetch("/content/search?"+p.toString());
+  items=await res.json();
+  catalog.innerHTML=items.map(card).join("");
+  renderHero(items[0]);
 }
 
 function openItem(item){
-renderHero(item);
-playItem(item);
+  renderHero(item);
 }
 
 function getPlayable(item){
-return item.iframe_url||item.youtube_trailer||item.source_url||"";
+  return item.iframe_url || item.youtube_trailer || item.source_url || "";
 }
 
 function playHero(){
-if(heroItem)playItem(heroItem);
+  if(heroItem)playItem(heroItem);
 }
 
 async function playItem(item){
-const url=getPlayable(item);
-if(!url)return alert("Nu are video/trailer.");
-currentItem=item;
-playerTitle.innerText=item.title;
-playerFrame.src=toEmbed(url);
-player.style.display="block";
-fetch("/content/"+item.id+"/view",{method:"POST"});
+  const url=getPlayable(item);
+  if(!url)return alert("Nu are video/trailer.");
+
+  currentItem=item;
+  playerTitle.innerText=item.title;
+  playerFrame.src=toEmbed(url);
+  player.style.display="block";
+  fetch("/content/"+item.id+"/view",{method:"POST"});
 }
 
 function playEpisode(ep, parentTitle){
-currentItem={id:ep.content_id,title:parentTitle || ep.title};
-playerTitle.innerText=`${parentTitle || ""} - S${ep.season_number}E${ep.episode_number}: ${ep.title}`;
-playerFrame.src=toEmbed(ep.iframe_url || ep.source_url || "");
-player.style.display="block";
-episodesModal.style.display="none";
+  currentItem={id:ep.content_id,title:parentTitle || ep.title};
+  playerTitle.innerText=`${parentTitle || ""} - S${ep.season_number}E${ep.episode_number}: ${ep.title}`;
+  playerFrame.src=toEmbed(ep.iframe_url || ep.source_url || "");
+  player.style.display="block";
+  episodesModal.style.display="none";
 }
 
 function toEmbed(url){
-if(!url)return"";
-if(url.includes("<iframe")){
-const m=url.match(/src=["']([^"']+)["']/);
-return m?m[1]:"";
-}
-if(url.includes("youtube.com/watch")){
-const id=new URL(url).searchParams.get("v");
-return "https://www.youtube.com/embed/"+id;
-}
-if(url.includes("youtu.be/")){
-const id=url.split("youtu.be/")[1].split("?")[0];
-return "https://www.youtube.com/embed/"+id;
-}
-if(url.includes("vimeo.com/")){
-const id=url.split("vimeo.com/")[1].split("?")[0];
-return "https://player.vimeo.com/video/"+id;
-}
-if(url.includes("dailymotion.com/video/")){
-const id=url.split("/video/")[1].split("?")[0];
-return "https://www.dailymotion.com/embed/video/"+id;
-}
-return url;
+  if(!url)return"";
+
+  if(url.includes("<iframe")){
+    const m=url.match(/src=["']([^"']+)["']/);
+    return m?m[1]:"";
+  }
+
+  if(url.includes("youtube.com/watch")){
+    const id=new URL(url).searchParams.get("v");
+    return "https://www.youtube.com/embed/"+id;
+  }
+
+  if(url.includes("youtu.be/")){
+    const id=url.split("youtu.be/")[1].split("?")[0];
+    return "https://www.youtube.com/embed/"+id;
+  }
+
+  if(url.includes("vimeo.com/")){
+    const id=url.split("vimeo.com/")[1].split("?")[0];
+    return "https://player.vimeo.com/video/"+id;
+  }
+
+  if(url.includes("dailymotion.com/video/")){
+    const id=url.split("/video/")[1].split("?")[0];
+    return "https://www.dailymotion.com/embed/video/"+id;
+  }
+
+  return url;
 }
 
 function closePlayer(){
-playerFrame.src="";
-player.style.display="none";
+  playerFrame.src="";
+  player.style.display="none";
 }
 
 async function openEpisodes(item){
-if(!item)return;
-episodesTitle.innerText="Episoade - " + item.title;
-episodesBox.innerHTML="Se încarcă...";
-seasonsBox.innerHTML="";
-episodesModal.style.display="grid";
+  if(!item)return;
 
-const seasonsRes=await fetch("/seasons/"+item.id);
-const seasons=await seasonsRes.json();
+  episodesTitle.innerText="Episoade - " + item.title;
+  episodesBox.innerHTML="Se încarcă...";
+  seasonsBox.innerHTML="";
+  episodesModal.style.display="grid";
 
-const epsRes=await fetch("/episodes/"+item.id);
-const eps=await epsRes.json();
+  const seasonsRes=await fetch("/seasons/"+item.id);
+  const seasons=await seasonsRes.json();
 
-if(seasons.length){
-seasonsBox.innerHTML=`
-<select id="seasonFilter" onchange='filterEpisodes(${JSON.stringify(eps)}, "${item.title.replace(/"/g,"&quot;")}")'>
-<option value="">Toate sezoanele</option>
-${seasons.map(s=>`<option value="${s.season_number}">Sezonul ${s.season_number} - ${s.title||""}</option>`).join("")}
-</select>`;
-}
+  const epsRes=await fetch("/episodes/"+item.id);
+  const eps=await epsRes.json();
 
-renderEpisodes(eps,item.title);
+  if(seasons.length){
+    seasonsBox.innerHTML=`
+    <select id="seasonFilter">
+      <option value="">Toate sezoanele</option>
+      ${seasons.map(s=>`<option value="${s.season_number}">Sezonul ${s.season_number} - ${s.title||""}</option>`).join("")}
+    </select>`;
+
+    seasonFilter.onchange=()=>filterEpisodes(eps,item.title);
+  }
+
+  renderEpisodes(eps,item.title);
 }
 
 function filterEpisodes(eps,title){
-const val=Number(seasonFilter.value);
-const filtered=val?eps.filter(e=>e.season_number===val):eps;
-renderEpisodes(filtered,title);
+  const val=Number(seasonFilter.value);
+  const filtered=val?eps.filter(e=>e.season_number===val):eps;
+  renderEpisodes(filtered,title);
 }
 
 function renderEpisodes(eps,title){
-episodesBox.innerHTML=eps.length?eps.map(ep=>`
-<div class="episode">
-<div>
-<b>S${ep.season_number} E${ep.episode_number}: ${ep.title}</b>
-<p class="small">${ep.description||""}</p>
-</div>
-<button onclick='playEpisode(${JSON.stringify(ep)}, ${JSON.stringify(title)})'>▶ Play</button>
-</div>
-`).join(""):"Nu există episoade pentru acest conținut.";
+  episodesBox.innerHTML=eps.length
+    ? eps.map(ep=>`
+      <div class="episode">
+        <div>
+          <b>S${ep.season_number} E${ep.episode_number}: ${ep.title}</b>
+          <p class="small">${ep.description||""}</p>
+        </div>
+        <button onclick='playEpisode(${escapeJson(ep)}, ${JSON.stringify(title)})'>▶ Play</button>
+      </div>
+    `).join("")
+    : "Nu există episoade pentru acest conținut.";
 }
 
 async function register(){
-const res=await fetch("/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.value,email:email.value,password:password.value})});
-const data=await res.json();
-if(!res.ok){showMsg(data.details||data.error||"Eroare register");return;}
-token=data.token;user=data.user;
-localStorage.setItem("token",token);
-localStorage.setItem("user",JSON.stringify(user));
-showMsg("Cont creat!","success");
-setTimeout(()=>authModal.style.display="none",600);
-renderUser();
+  const res=await fetch("/auth/register",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:name.value,email:email.value,password:password.value})
+  });
+
+  const data=await res.json();
+
+  if(!res.ok){
+    showMsg(data.details||data.error||"Eroare register");
+    return;
+  }
+
+  token=data.token;
+  user=data.user;
+  localStorage.setItem("token",token);
+  localStorage.setItem("user",JSON.stringify(user));
+  showMsg("Cont creat!","success");
+  setTimeout(()=>authModal.style.display="none",600);
+  renderUser();
 }
 
 async function login(){
-const res=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email.value,password:password.value})});
-const data=await res.json();
-if(!res.ok){showMsg(data.error||data.details||"Login greșit");return;}
-token=data.token;user=data.user;
-localStorage.setItem("token",token);
-localStorage.setItem("user",JSON.stringify(user));
-showMsg("Login reușit!","success");
-setTimeout(()=>authModal.style.display="none",600);
-renderUser();
+  const res=await fetch("/auth/login",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({email:email.value,password:password.value})
+  });
+
+  const data=await res.json();
+
+  if(!res.ok){
+    showMsg(data.error||data.details||"Login greșit");
+    return;
+  }
+
+  token=data.token;
+  user=data.user;
+  localStorage.setItem("token",token);
+  localStorage.setItem("user",JSON.stringify(user));
+  showMsg("Login reușit!","success");
+  setTimeout(()=>authModal.style.display="none",600);
+  renderUser();
 }
 
 function logout(){
-localStorage.removeItem("token");
-localStorage.removeItem("user");
-token="";
-user=null;
-renderUser();
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  token="";
+  user=null;
+  renderUser();
 }
 
 async function addWatchlist(id){
-if(!token)return openAuth();
-await fetch("/watchlist/"+id,{method:"POST",headers:authHeaders()});
-alert("Adăugat în watchlist");
+  if(!token)return openAuth();
+  await fetch("/watchlist/"+id,{method:"POST",headers:authHeaders()});
+  alert("Adăugat în watchlist");
 }
 
 function addHeroWatchlist(){
-if(heroItem)addWatchlist(heroItem.id);
+  if(heroItem)addWatchlist(heroItem.id);
 }
 
 async function loadWatchlist(){
-if(!token)return openAuth();
-const res=await fetch("/watchlist",{headers:authHeaders()});
-const data=await res.json();
-watchlistBox.innerHTML=data.length?data.map(card).join(""):"Nu ai nimic în watchlist.";
+  if(!token)return openAuth();
+  const res=await fetch("/watchlist",{headers:authHeaders()});
+  const data=await res.json();
+  watchlistBox.innerHTML=data.length?data.map(card).join(""):"Nu ai nimic în watchlist.";
 }
 
 async function loadHistory(){
-if(!token)return openAuth();
-const res=await fetch("/history",{headers:authHeaders()});
-const data=await res.json();
-historyBox.innerHTML=data.length?data.map(card).join(""):"Nu ai continue watching.";
+  if(!token)return openAuth();
+  const res=await fetch("/history",{headers:authHeaders()});
+  const data=await res.json();
+  historyBox.innerHTML=data.length?data.map(card).join(""):"Nu ai continue watching.";
 }
 
 async function loadRecommendations(){
-if(!token)return openAuth();
-const res=await fetch("/recommendations",{headers:authHeaders()});
-const data=await res.json();
-recommendationsBox.innerHTML=data.length?data.map(card).join(""):"Nu există recomandări încă.";
+  if(!token)return openAuth();
+  const res=await fetch("/recommendations",{headers:authHeaders()});
+  const data=await res.json();
+  recommendationsBox.innerHTML=data.length?data.map(card).join(""):"Nu există recomandări încă.";
 }
 
 async function saveProgress(){
-if(!token)return openAuth();
-if(!currentItem)return;
-await fetch("/history/"+currentItem.id,{
-method:"POST",
-headers:authHeaders(),
-body:JSON.stringify({progress_seconds:120,duration_seconds:7200,completed:false})
-});
-alert("Progres salvat");
+  if(!token)return openAuth();
+  if(!currentItem)return;
+
+  await fetch("/history/"+currentItem.id,{
+    method:"POST",
+    headers:authHeaders(),
+    body:JSON.stringify({progress_seconds:120,duration_seconds:7200,completed:false})
+  });
+
+  alert("Progres salvat");
 }
 
 function showSection(section){
-homeSection.style.display=section==="home"?"block":"none";
-watchlistSection.style.display=section==="watchlist"?"block":"none";
-historySection.style.display=section==="history"?"block":"none";
-recommendationsSection.style.display=section==="recommendations"?"block":"none";
-if(section==="watchlist")loadWatchlist();
-if(section==="history")loadHistory();
-if(section==="recommendations")loadRecommendations();
+  homeSection.style.display=section==="home"?"block":"none";
+  watchlistSection.style.display=section==="watchlist"?"block":"none";
+  historySection.style.display=section==="history"?"block":"none";
+  recommendationsSection.style.display=section==="recommendations"?"block":"none";
+
+  if(section==="watchlist")loadWatchlist();
+  if(section==="history")loadHistory();
+  if(section==="recommendations")loadRecommendations();
 }
 </script>
 </body>
