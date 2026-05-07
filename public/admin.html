@@ -27,6 +27,32 @@ a{color:white}
 <p><a href="/">← Platformă</a></p>
 
 
+
+<div class="box">
+<h2>AI Command Center</h2>
+<p class="small">Controlează calitatea, graph-ul și comenzile AI.</p>
+
+<div class="grid">
+<input id="aiCommandInput" placeholder="Ex: verifică quality / graph / găsește lipsuri">
+<button onclick="runAiCommand()">Rulează comandă AI</button>
+<button onclick="rebuildQuality()">Rebuild Quality</button>
+<button onclick="loadQualityDashboard()">Refresh Dashboard</button>
+</div>
+
+<div id="aiCommandResult" class="small"></div>
+
+<h3>Quality Dashboard</h3>
+<div id="qualityDashboard"></div>
+
+<h3>Graph Viewer</h3>
+<div class="grid">
+<input id="graphContentId" placeholder="Content ID ex: 4">
+<button onclick="buildGraphForContent()">Build Graph</button>
+<button onclick="loadGraphForContent()">View Graph</button>
+</div>
+<div id="graphViewer"></div>
+</div>
+
 <div class="box">
 <h2>AI Metadata</h2>
 <p class="small">ON = completează automat metadata. OFF = controlezi manual tot.</p>
@@ -466,6 +492,89 @@ async function autoFillAiMetadata(){
   aiStatus.innerHTML = "AI Metadata aplicat ✅";
 }
 
+
+async function runAiCommand(){
+  const command = aiCommandInput.value.trim();
+  if(!command) return alert("Scrie o comandă.");
+
+  aiCommandResult.innerHTML = "AI rulează comanda...";
+
+  const res = await fetch("/ai/command",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({command})
+  });
+
+  const data = await res.json();
+  aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function rebuildQuality(){
+  aiCommandResult.innerHTML = "Se reconstruiește quality score...";
+
+  const res = await fetch("/ai/quality/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function loadQualityDashboard(){
+  const res = await fetch("/ai/quality");
+  const data = await res.json();
+
+  qualityDashboard.innerHTML = data.map(x=>`
+    <div class="result">
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div>
+        <b>${x.title}</b>
+        <div class="small">ID: ${x.id} | ${x.category || ""} | ${x.type || ""}</div>
+        <div class="small">Quality: ${x.quality_score ?? 0}/100</div>
+        <div class="small">Metadata: ${x.metadata_score ?? 0} | Sources: ${x.source_score ?? 0} | Popularity: ${x.popularity_score ?? 0}</div>
+        <div class="small">Notes: ${x.notes || "OK"}</div>
+        <div class="actions">
+          <button onclick="graphContentId.value='${x.id}';buildGraphForContent()">Build Graph</button>
+          <button onclick="graphContentId.value='${x.id}';loadGraphForContent()">View Graph</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function buildGraphForContent(){
+  const id = graphContentId.value.trim();
+  if(!id) return alert("Pune Content ID.");
+
+  const res = await fetch("/graph/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function loadGraphForContent(){
+  const id = graphContentId.value.trim();
+  if(!id) return alert("Pune Content ID.");
+
+  const res = await fetch("/graph/"+id);
+  const data = await res.json();
+
+  graphViewer.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <p class="small">Quality: ${data.score?.quality_score ?? "N/A"} | Notes: ${data.score?.notes || "OK"}</p>
+        <h4>Relations</h4>
+        ${(data.relations||[]).map(r=>`<div class="small">${r.relation_type}: ${r.node_type} → ${r.name}</div>`).join("")}
+        <h4>Tags</h4>
+        ${(data.tags||[]).map(t=>`<span class="small">#${t.tag} </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+loadQualityDashboard();
 loadAiStatus();
 loadContent();
   } else {
@@ -582,6 +691,89 @@ async function autoFillAiMetadata(){
   aiStatus.innerHTML = "AI Metadata aplicat ✅";
 }
 
+
+async function runAiCommand(){
+  const command = aiCommandInput.value.trim();
+  if(!command) return alert("Scrie o comandă.");
+
+  aiCommandResult.innerHTML = "AI rulează comanda...";
+
+  const res = await fetch("/ai/command",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({command})
+  });
+
+  const data = await res.json();
+  aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function rebuildQuality(){
+  aiCommandResult.innerHTML = "Se reconstruiește quality score...";
+
+  const res = await fetch("/ai/quality/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function loadQualityDashboard(){
+  const res = await fetch("/ai/quality");
+  const data = await res.json();
+
+  qualityDashboard.innerHTML = data.map(x=>`
+    <div class="result">
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div>
+        <b>${x.title}</b>
+        <div class="small">ID: ${x.id} | ${x.category || ""} | ${x.type || ""}</div>
+        <div class="small">Quality: ${x.quality_score ?? 0}/100</div>
+        <div class="small">Metadata: ${x.metadata_score ?? 0} | Sources: ${x.source_score ?? 0} | Popularity: ${x.popularity_score ?? 0}</div>
+        <div class="small">Notes: ${x.notes || "OK"}</div>
+        <div class="actions">
+          <button onclick="graphContentId.value='${x.id}';buildGraphForContent()">Build Graph</button>
+          <button onclick="graphContentId.value='${x.id}';loadGraphForContent()">View Graph</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function buildGraphForContent(){
+  const id = graphContentId.value.trim();
+  if(!id) return alert("Pune Content ID.");
+
+  const res = await fetch("/graph/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function loadGraphForContent(){
+  const id = graphContentId.value.trim();
+  if(!id) return alert("Pune Content ID.");
+
+  const res = await fetch("/graph/"+id);
+  const data = await res.json();
+
+  graphViewer.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <p class="small">Quality: ${data.score?.quality_score ?? "N/A"} | Notes: ${data.score?.notes || "OK"}</p>
+        <h4>Relations</h4>
+        ${(data.relations||[]).map(r=>`<div class="small">${r.relation_type}: ${r.node_type} → ${r.name}</div>`).join("")}
+        <h4>Tags</h4>
+        ${(data.tags||[]).map(t=>`<span class="small">#${t.tag} </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+loadQualityDashboard();
 loadAiStatus();
 loadContent();
 }
@@ -740,6 +932,89 @@ async function autoFillAiMetadata(){
   aiStatus.innerHTML = "AI Metadata aplicat ✅";
 }
 
+
+async function runAiCommand(){
+  const command = aiCommandInput.value.trim();
+  if(!command) return alert("Scrie o comandă.");
+
+  aiCommandResult.innerHTML = "AI rulează comanda...";
+
+  const res = await fetch("/ai/command",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({command})
+  });
+
+  const data = await res.json();
+  aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function rebuildQuality(){
+  aiCommandResult.innerHTML = "Se reconstruiește quality score...";
+
+  const res = await fetch("/ai/quality/rebuild",{method:"POST"});
+  const data = await res.json();
+
+  aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function loadQualityDashboard(){
+  const res = await fetch("/ai/quality");
+  const data = await res.json();
+
+  qualityDashboard.innerHTML = data.map(x=>`
+    <div class="result">
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div>
+        <b>${x.title}</b>
+        <div class="small">ID: ${x.id} | ${x.category || ""} | ${x.type || ""}</div>
+        <div class="small">Quality: ${x.quality_score ?? 0}/100</div>
+        <div class="small">Metadata: ${x.metadata_score ?? 0} | Sources: ${x.source_score ?? 0} | Popularity: ${x.popularity_score ?? 0}</div>
+        <div class="small">Notes: ${x.notes || "OK"}</div>
+        <div class="actions">
+          <button onclick="graphContentId.value='${x.id}';buildGraphForContent()">Build Graph</button>
+          <button onclick="graphContentId.value='${x.id}';loadGraphForContent()">View Graph</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function buildGraphForContent(){
+  const id = graphContentId.value.trim();
+  if(!id) return alert("Pune Content ID.");
+
+  const res = await fetch("/graph/build/"+id,{method:"POST"});
+  const data = await res.json();
+
+  graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
+  loadQualityDashboard();
+}
+
+async function loadGraphForContent(){
+  const id = graphContentId.value.trim();
+  if(!id) return alert("Pune Content ID.");
+
+  const res = await fetch("/graph/"+id);
+  const data = await res.json();
+
+  graphViewer.innerHTML = `
+    <div class="result">
+      <div>
+        <h3>${data.content?.title || ""}</h3>
+        <p class="small">Quality: ${data.score?.quality_score ?? "N/A"} | Notes: ${data.score?.notes || "OK"}</p>
+        <h4>Relations</h4>
+        ${(data.relations||[]).map(r=>`<div class="small">${r.relation_type}: ${r.node_type} → ${r.name}</div>`).join("")}
+        <h4>Tags</h4>
+        ${(data.tags||[]).map(t=>`<span class="small">#${t.tag} </span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+loadQualityDashboard();
 loadAiStatus();
 loadContent();
 </script>
