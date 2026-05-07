@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nubiru Admin PRO</title>
+<title>Nubiru Admin PRO Episodes</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial;background:#050712;color:white;padding:20px}
@@ -14,8 +14,7 @@ input,textarea,select,button{width:100%;padding:11px;border:0;border-radius:10px
 input,textarea,select{background:#1f2937;color:white}
 button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
 button:hover{background:#7c3aed}
-.row{display:flex;gap:10px;flex-wrap:wrap}
-.card,.result{background:#1f2937;padding:12px;border-radius:12px;margin-top:10px;display:flex;gap:12px}
+.card,.result,.episode{background:#1f2937;padding:12px;border-radius:12px;margin-top:10px;display:flex;gap:12px}
 .card img,.result img{width:90px;height:130px;object-fit:cover;border-radius:8px;background:#333}
 .actions{display:flex;gap:8px;margin-top:8px}
 .small{color:#cbd5e1;font-size:13px}
@@ -97,7 +96,7 @@ a{color:white}
 
 <div class="grid">
 <input name="genre" placeholder="Gen principal">
-<input name="actors" placeholder="Actori: Sam Worthington, Zoe Saldana">
+<input name="actors" placeholder="Actori">
 <input name="director" placeholder="Regizor">
 <input name="country" placeholder="Țară">
 <input name="language" placeholder="Limbă">
@@ -105,9 +104,9 @@ a{color:white}
 </div>
 
 <div class="grid">
-<input name="collection" placeholder="Colecție: Marvel, DC, Disney, Avatar">
-<input name="channel" placeholder="Canal: Cartoon Network, Animax, Disney">
-<input name="tags" placeholder="Taguri: popular, familie, supereroi">
+<input name="collection" placeholder="Colecție">
+<input name="channel" placeholder="Canal">
+<input name="tags" placeholder="Taguri">
 <input name="tmdb_id" placeholder="TMDB ID">
 <input name="imdb_id" placeholder="IMDb ID">
 </div>
@@ -126,11 +125,46 @@ a{color:white}
 </select>
 </div>
 
-<div class="row">
+<div class="actions">
 <button type="submit">Salvează</button>
 <button type="button" onclick="resetForm()">Curăță formular</button>
 </div>
 </form>
+</div>
+
+<div class="box">
+<h2>Sezoane și episoade</h2>
+
+<div class="grid">
+<select id="episodeContentSelect"></select>
+<button onclick="loadEpisodesForSelected()">Încarcă episoade</button>
+</div>
+
+<h3>Adaugă / Update sezon</h3>
+<div class="grid">
+<input id="seasonNumber" type="number" placeholder="Număr sezon" value="1">
+<input id="seasonTitle" placeholder="Titlu sezon">
+<input id="seasonPoster" placeholder="Poster sezon URL">
+</div>
+<textarea id="seasonDescription" placeholder="Descriere sezon"></textarea>
+<button onclick="saveSeason()">Salvează sezon</button>
+
+<h3>Adaugă / Update episod</h3>
+<div class="grid">
+<input id="episodeSeasonNumber" type="number" placeholder="Sezon" value="1">
+<input id="episodeNumber" type="number" placeholder="Episod" value="1">
+<input id="episodeTitle" placeholder="Titlu episod">
+<input id="episodeDuration" type="number" placeholder="Durată secunde">
+</div>
+<textarea id="episodeDescription" placeholder="Descriere episod"></textarea>
+<div class="grid">
+<input id="episodeIframe" placeholder="Iframe URL episod">
+<input id="episodeSource" placeholder="Source URL episod">
+</div>
+<button onclick="saveEpisode()">Salvează episod</button>
+
+<h3>Lista episoade</h3>
+<div id="episodesList"></div>
 </div>
 
 <div class="box">
@@ -172,6 +206,8 @@ const categories = [
 const form = document.getElementById("contentForm");
 const list = document.getElementById("contentList");
 const metadataResults = document.getElementById("metadataResults");
+
+let allContent = [];
 
 function initSelects(){
   categorySelect.innerHTML = '<option value="">Categorie</option>' + categories.map(c=>`<option>${c}</option>`).join("");
@@ -382,13 +418,15 @@ async function loadContent(){
 
   const res = await fetch("/content/search?" + params.toString());
   const items = await res.json();
+  allContent = items;
+  updateEpisodeContentSelect(items);
 
   list.innerHTML = items.map(item=>`
     <div class="card">
       <img src="${item.poster_url || "https://via.placeholder.com/300x450"}">
       <div>
         <h3>${item.title}</h3>
-        <div class="small">${item.category || ""} | ${item.type || ""} | ${item.year || ""} | ${item.rating || ""}</div>
+        <div class="small">ID: ${item.id} | ${item.category || ""} | ${item.type || ""} | ${item.year || ""} | ${item.rating || ""}</div>
         <p>${item.description || ""}</p>
         <div class="small">Genuri: ${item.genres || item.genre || ""}</div>
         <div class="small">Actori: ${item.actors || ""}</div>
@@ -396,10 +434,21 @@ async function loadContent(){
         <div class="actions">
           <button onclick='editItem(${JSON.stringify(item)})'>Edit</button>
           <button onclick='deleteItem(${item.id})'>Delete</button>
+          <button onclick='selectForEpisodes(${item.id})'>Episoade</button>
         </div>
       </div>
     </div>
   `).join("");
+}
+
+function updateEpisodeContentSelect(items){
+  episodeContentSelect.innerHTML = items.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
+}
+
+function selectForEpisodes(id){
+  episodeContentSelect.value = id;
+  loadEpisodesForSelected();
+  window.scrollTo({top:episodeContentSelect.offsetTop-30,behavior:"smooth"});
 }
 
 function editItem(item){
@@ -415,6 +464,107 @@ async function deleteItem(id){
   if(!confirm("Ștergi acest conținut?")) return;
   await fetch("/content/"+id,{method:"DELETE"});
   loadContent();
+}
+
+/* EPISODES ADMIN */
+async function saveSeason(){
+  const contentId = Number(episodeContentSelect.value);
+  if(!contentId) return alert("Alege un conținut.");
+
+  const data = {
+    content_id: contentId,
+    season_number: Number(seasonNumber.value || 1),
+    title: seasonTitle.value,
+    description: seasonDescription.value,
+    poster_url: seasonPoster.value
+  };
+
+  const res = await fetch("/seasons",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+  if(res.ok){
+    alert("Sezon salvat!");
+    loadEpisodesForSelected();
+  } else alert(result.details);
+}
+
+async function saveEpisode(){
+  const contentId = Number(episodeContentSelect.value);
+  if(!contentId) return alert("Alege un conținut.");
+
+  const data = {
+    content_id: contentId,
+    season_number: Number(episodeSeasonNumber.value || 1),
+    episode_number: Number(episodeNumber.value || 1),
+    title: episodeTitle.value,
+    description: episodeDescription.value,
+    iframe_url: episodeIframe.value,
+    source_url: episodeSource.value,
+    duration_seconds: Number(episodeDuration.value || 0)
+  };
+
+  const res = await fetch("/episodes",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+  if(res.ok){
+    alert("Episod salvat!");
+    clearEpisodeForm();
+    loadEpisodesForSelected();
+  } else alert(result.details);
+}
+
+function clearEpisodeForm(){
+  episodeTitle.value="";
+  episodeDescription.value="";
+  episodeIframe.value="";
+  episodeSource.value="";
+  episodeDuration.value="";
+}
+
+async function loadEpisodesForSelected(){
+  const contentId = Number(episodeContentSelect.value);
+  if(!contentId) return;
+
+  const res = await fetch("/episodes/"+contentId);
+  const eps = await res.json();
+
+  episodesList.innerHTML = eps.length ? eps.map(e=>`
+    <div class="episode">
+      <div>
+        <b>S${e.season_number} E${e.episode_number}: ${e.title}</b>
+        <p>${e.description || ""}</p>
+        <div class="small">${e.iframe_url || e.source_url || ""}</div>
+        <div class="actions">
+          <button onclick='fillEpisode(${JSON.stringify(e)})'>Edit episod</button>
+          <button onclick='deleteEpisode(${e.id})'>Delete episod</button>
+        </div>
+      </div>
+    </div>
+  `).join("") : "Nu există episoade pentru acest conținut.";
+}
+
+function fillEpisode(e){
+  episodeSeasonNumber.value=e.season_number;
+  episodeNumber.value=e.episode_number;
+  episodeTitle.value=e.title || "";
+  episodeDescription.value=e.description || "";
+  episodeIframe.value=e.iframe_url || "";
+  episodeSource.value=e.source_url || "";
+  episodeDuration.value=e.duration_seconds || "";
+}
+
+async function deleteEpisode(id){
+  if(!confirm("Ștergi episodul?")) return;
+  await fetch("/episodes/"+id,{method:"DELETE"});
+  loadEpisodesForSelected();
 }
 
 loadContent();
