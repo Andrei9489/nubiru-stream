@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nubiru Stream User V2</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial;background:#050712;color:white}
+.app{display:flex;min-height:100vh}
+.sidebar{width:260px;background:#080b16;padding:18px;position:fixed;top:0;bottom:0;overflow:auto}
+.logo{font-size:26px;font-weight:bold;color:#8b5cf6;margin-bottom:20px}
+.sidebar button{display:block;width:100%;margin-bottom:8px;text-align:left;background:#111827;color:white;border:0;border-radius:12px;padding:12px;cursor:pointer}
+.sidebar button:hover{background:#8b5cf6}
+.main{margin-left:260px;width:calc(100% - 260px)}
+.topbar{position:sticky;top:0;background:rgba(5,7,18,.95);z-index:50;padding:14px}
+.gridTop{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px}
+input,button{padding:11px;border-radius:10px;border:0}
+input{background:#1f2937;color:white}
+button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
+.hero{min-height:390px;padding:60px 30px;background:linear-gradient(90deg,#111827,#050712);display:flex;align-items:end}
+.hero h1{font-size:46px;margin:0}
+.hero p{max-width:760px;color:#d1d5db}
+.section{padding:22px}
+.rail{display:flex;gap:16px;overflow-x:auto;padding-bottom:14px}
+.card{min-width:190px;width:190px;background:#111827;border-radius:16px;overflow:hidden;cursor:pointer}
+.card img{width:100%;height:285px;object-fit:cover;background:#222}
+.cardInfo{padding:10px}
+.small{color:#cbd5e1;font-size:13px}
+.player{display:none;position:fixed;inset:0;background:#000;z-index:200}
+.playerTop{position:absolute;top:0;left:0;right:0;padding:18px;z-index:210;display:flex;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,.9),transparent)}
+.player iframe{width:100%;height:100%;border:0}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;place-items:center}
+.modalBox{background:#111827;padding:22px;border-radius:18px;width:90%;max-width:420px;display:grid;gap:10px}
+.error{color:#f87171}
+.success{color:#4ade80}
+@media(max-width:900px){.app{display:block}.sidebar{position:relative;width:100%}.main{margin-left:0;width:100%}.gridTop{grid-template-columns:1fr}.hero h1{font-size:32px}}
+</style>
+</head>
+<body>
+
+<div class="app">
+<aside class="sidebar">
+<div class="logo">Nubiru Stream</div>
+<div id="userBox"></div>
+<button onclick="showSection('home')">Acasă</button>
+<button onclick="showSection('watchlist')">❤️ Watchlist</button>
+<button onclick="showSection('history')">▶ Continue Watching</button>
+<button onclick="showSection('recommendations')">✨ Pentru tine</button>
+<a href="/admin.html"><button>Admin PRO</button></a>
+</aside>
+
+<main class="main">
+<div class="topbar">
+<div class="gridTop">
+<input id="q" placeholder="Caută titlu, actor, regizor...">
+<input id="actor" placeholder="Actor">
+<input id="genre" placeholder="Gen">
+<input id="country" placeholder="Țară">
+<button onclick="search()">Search</button>
+</div>
+</div>
+
+<section class="hero" id="hero">
+<div>
+<h1 id="heroTitle">Nubiru Stream</h1>
+<p id="heroDesc">User system V2: login, watchlist, continue watching și recomandări.</p>
+<button onclick="playHero()">▶ Play</button>
+<button onclick="addHeroWatchlist()">❤️ Watchlist</button>
+</div>
+</section>
+
+<section class="section" id="homeSection">
+<h2>Catalog</h2>
+<div class="rail" id="catalog"></div>
+</section>
+
+<section class="section" id="watchlistSection" style="display:none">
+<h2>Watchlist</h2>
+<div class="rail" id="watchlistBox"></div>
+</section>
+
+<section class="section" id="historySection" style="display:none">
+<h2>Continue Watching</h2>
+<div class="rail" id="historyBox"></div>
+</section>
+
+<section class="section" id="recommendationsSection" style="display:none">
+<h2>Pentru tine</h2>
+<div class="rail" id="recommendationsBox"></div>
+</section>
+</main>
+</div>
+
+<section class="player" id="player">
+<div class="playerTop">
+<strong id="playerTitle">Player</strong>
+<div>
+<button onclick="saveProgress()">Salvează progres</button>
+<button onclick="closePlayer()">Închide</button>
+</div>
+</div>
+<iframe id="playerFrame" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+</section>
+
+<div class="modal" id="authModal">
+<div class="modalBox">
+<h2>Cont Nubiru</h2>
+<div id="authMessage"></div>
+<input id="name" placeholder="Nume">
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Parolă">
+<button onclick="register()">Creează cont</button>
+<button onclick="login()">Login</button>
+<button onclick="authModal.style.display='none'">Închide</button>
+</div>
+</div>
+
+<script>
+let token=localStorage.getItem("token")||"";
+let user=JSON.parse(localStorage.getItem("user")||"null");
+let items=[];
+let heroItem=null;
+let currentItem=null;
+
+function authHeaders(){
+return token?{Authorization:"Bearer "+token,"Content-Type":"application/json"}:{"Content-Type":"application/json"};
+}
+
+function showMsg(msg,type="error"){
+authMessage.innerHTML=`<p class="${type}">${msg}</p>`;
+}
+
+function renderUser(){
+userBox.innerHTML=user?`
+<p class="small">Salut, ${user.name||user.email}</p>
+<button onclick="logout()">Logout</button>
+`:`<button onclick="openAuth()">Login / Register</button>`;
+}
+renderUser();
+
+function openAuth(){
+authMessage.innerHTML="";
+authModal.style.display="grid";
+}
+
+async function load(){
+const res=await fetch("/content/search?sort=popular");
+items=await res.json();
+heroItem=items[0];
+renderHero(heroItem);
+catalog.innerHTML=items.map(card).join("");
+}
+load();
+
+function renderHero(item){
+if(!item)return;
+heroItem=item;
+heroTitle.innerText=item.title;
+heroDesc.innerText=item.description||"";
+hero.style.background=`linear-gradient(90deg,rgba(5,7,18,.95),rgba(5,7,18,.35)),url('${item.backdrop_url||item.poster_url||""}') center/cover`;
+}
+
+function card(item){
+return `
+<div class="card" onclick='openItem(${JSON.stringify(item)})'>
+<img src="${item.poster_url||"https://via.placeholder.com/300x450"}">
+<div class="cardInfo">
+<b>${item.title}</b><br>
+<span class="small">${item.year||""} ${item.genres||item.genre||""}</span><br>
+<button onclick='event.stopPropagation();addWatchlist(${item.id})'>❤️ Add</button>
+<button onclick='event.stopPropagation();removeWatchlist(${item.id})'>🗑 Remove</button>
+</div>
+</div>`;
+}
+
+async function search(){
+const p=new URLSearchParams();
+if(q.value)p.set("q",q.value);
+if(actor.value)p.set("actor",actor.value);
+if(genre.value)p.set("genre",genre.value);
+if(country.value)p.set("country",country.value);
+const res=await fetch("/content/search?"+p.toString());
+items=await res.json();
+catalog.innerHTML=items.map(card).join("");
+renderHero(items[0]);
+}
+
+function openItem(item){
+renderHero(item);
+playItem(item);
+}
+
+function getPlayable(item){
+return item.iframe_url||item.youtube_trailer||item.source_url||"";
+}
+
+function playHero(){
+if(heroItem)playItem(heroItem);
+}
+
+async function playItem(item){
+const url=getPlayable(item);
+if(!url)return alert("Nu are video/trailer.");
+currentItem=item;
+playerTitle.innerText=item.title;
+playerFrame.src=toEmbed(url);
+player.style.display="block";
+fetch("/content/"+item.id+"/view",{method:"POST"});
+}
+
+function toEmbed(url){
+if(!url)return"";
+if(url.includes("youtube.com/watch")){
+const id=new URL(url).searchParams.get("v");
+return "https://www.youtube.com/embed/"+id;
+}
+if(url.includes("youtu.be/")){
+const id=url.split("youtu.be/")[1].split("?")[0];
+return "https://www.youtube.com/embed/"+id;
+}
+return url;
+}
+
+function closePlayer(){
+playerFrame.src="";
+player.style.display="none";
+}
+
+async function register(){
+const res=await fetch("/auth/register",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({name:name.value,email:email.value,password:password.value})
+});
+const data=await res.json();
+
+if(!res.ok){
+if(data.details && data.details.includes("duplicate")) showMsg("Emailul există deja. Apasă Login.");
+else showMsg(data.error || data.details || "Eroare register");
+return;
+}
+
+token=data.token;user=data.user;
+localStorage.setItem("token",token);
+localStorage.setItem("user",JSON.stringify(user));
+showMsg("Cont creat!", "success");
+setTimeout(()=>authModal.style.display="none",600);
+renderUser();
+}
+
+async function login(){
+const res=await fetch("/auth/login",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({email:email.value,password:password.value})
+});
+const data=await res.json();
+
+if(!res.ok){
+showMsg(data.error || data.details || "Login greșit");
+return;
+}
+
+token=data.token;user=data.user;
+localStorage.setItem("token",token);
+localStorage.setItem("user",JSON.stringify(user));
+showMsg("Login reușit!", "success");
+setTimeout(()=>authModal.style.display="none",600);
+renderUser();
+}
+
+function logout(){
+localStorage.removeItem("token");
+localStorage.removeItem("user");
+token="";
+user=null;
+renderUser();
+}
+
+async function addWatchlist(id){
+if(!token)return openAuth();
+await fetch("/watchlist/"+id,{method:"POST",headers:authHeaders()});
+alert("Adăugat în watchlist");
+}
+
+async function removeWatchlist(id){
+if(!token)return openAuth();
+await fetch("/watchlist/"+id,{method:"DELETE",headers:authHeaders()});
+alert("Șters din watchlist");
+loadWatchlist();
+}
+
+function addHeroWatchlist(){
+if(heroItem)addWatchlist(heroItem.id);
+}
+
+async function loadWatchlist(){
+if(!token)return openAuth();
+const res=await fetch("/watchlist",{headers:authHeaders()});
+const data=await res.json();
+watchlistBox.innerHTML=data.length?data.map(card).join(""):"Nu ai nimic în watchlist.";
+}
+
+async function loadHistory(){
+if(!token)return openAuth();
+const res=await fetch("/history",{headers:authHeaders()});
+const data=await res.json();
+historyBox.innerHTML=data.length?data.map(card).join(""):"Nu ai continue watching.";
+}
+
+async function loadRecommendations(){
+if(!token)return openAuth();
+const res=await fetch("/recommendations",{headers:authHeaders()});
+const data=await res.json();
+recommendationsBox.innerHTML=data.length?data.map(card).join(""):"Nu există recomandări încă.";
+}
+
+async function saveProgress(){
+if(!token)return openAuth();
+if(!currentItem)return;
+await fetch("/history/"+currentItem.id,{
+method:"POST",
+headers:authHeaders(),
+body:JSON.stringify({progress_seconds:120,duration_seconds:7200,completed:false})
+});
+alert("Progres salvat");
+}
+
+function showSection(section){
+homeSection.style.display=section==="home"?"block":"none";
+watchlistSection.style.display=section==="watchlist"?"block":"none";
+historySection.style.display=section==="history"?"block":"none";
+recommendationsSection.style.display=section==="recommendations"?"block":"none";
+
+if(section==="watchlist")loadWatchlist();
+if(section==="history")loadHistory();
+if(section==="recommendations")loadRecommendations();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nubiru Admin PRO</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial;background:#050712;color:white;padding:20px}
+h1,h2{color:#8b5cf6}
+.box{background:#111827;padding:18px;border-radius:16px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+input,textarea,select,button{width:100%;padding:11px;border:0;border-radius:10px;font-size:14px}
+input,textarea,select{background:#1f2937;color:white}
+button{background:#8b5cf6;color:white;font-weight:bold;cursor:pointer}
+button:hover{background:#7c3aed}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.card,.result{background:#1f2937;padding:12px;border-radius:12px;margin-top:10px;display:flex;gap:12px}
+.card img,.result img{width:90px;height:130px;object-fit:cover;border-radius:8px;background:#333}
+.actions{display:flex;gap:8px;margin-top:8px}
+.small{color:#cbd5e1;font-size:13px}
+a{color:white}
+</style>
+</head>
+<body>
+
+<h1>Nubiru Stream Admin PRO</h1>
+<p><a href="/">← Platformă</a></p>
+
+<div class="box">
+<h2>Caută metadata</h2>
+<div class="grid">
+<select id="metadataSource">
+<option value="tmdb">TMDB</option>
+<option value="omdb">OMDB / IMDb</option>
+<option value="youtube">YouTube Trailer</option>
+<option value="anime">Anime</option>
+<option value="tv">TVMaze</option>
+<option value="korean">Coreene</option>
+<option value="indian">Indiene</option>
+<option value="telenovela">Telenovele</option>
+<option value="music">Muzică</option>
+<option value="sport">Sport</option>
+</select>
+<input id="metadataQuery" placeholder="Caută Avatar, Naruto, Arsenal...">
+<button onclick="searchMetadata()">Caută metadata</button>
+</div>
+<div id="metadataResults"></div>
+</div>
+
+<div class="box">
+<h2 id="formTitle">Adaugă / Editează conținut</h2>
+
+<form id="contentForm">
+<input type="hidden" name="id">
+
+<div class="grid">
+<input name="title" placeholder="Titlu" required>
+<input name="year" type="number" placeholder="An">
+<input name="rating" placeholder="Rating ex: 8.5">
+<input name="age_rating" placeholder="Age rating ex: 12+ / 16+">
+</div>
+
+<textarea name="description" placeholder="Descriere"></textarea>
+
+<div class="grid">
+<input name="poster_url" placeholder="Poster URL">
+<input name="backdrop_url" placeholder="Backdrop URL">
+<input name="iframe_url" placeholder="Iframe / Embed URL">
+<input name="source_url" placeholder="Source URL">
+<input name="youtube_trailer" placeholder="YouTube Trailer Embed URL">
+</div>
+
+<div class="grid">
+<select name="type">
+<option value="movie">movie</option>
+<option value="series">series</option>
+<option value="anime">anime</option>
+<option value="music">music</option>
+<option value="sport">sport</option>
+<option value="tvshow">tvshow</option>
+</select>
+
+<select name="category" id="categorySelect"></select>
+<select name="subcategory">
+<option value="">Subcategorie</option>
+<option>Filme</option>
+<option>Seriale</option>
+<option>Filme dublate</option>
+<option>Seriale dublate</option>
+<option>Colecții</option>
+<option>Canale</option>
+</select>
+
+<input name="genres" placeholder="Genuri separate prin virgulă">
+</div>
+
+<div class="grid">
+<input name="genre" placeholder="Gen principal">
+<input name="actors" placeholder="Actori: Sam Worthington, Zoe Saldana">
+<input name="director" placeholder="Regizor">
+<input name="country" placeholder="Țară">
+<input name="language" placeholder="Limbă">
+<input name="quality" placeholder="Calitate: 720p, 1080p, 4K">
+</div>
+
+<div class="grid">
+<input name="collection" placeholder="Colecție: Marvel, DC, Disney, Avatar">
+<input name="channel" placeholder="Canal: Cartoon Network, Animax, Disney">
+<input name="tags" placeholder="Taguri: popular, familie, supereroi">
+<input name="tmdb_id" placeholder="TMDB ID">
+<input name="imdb_id" placeholder="IMDb ID">
+</div>
+
+<div class="grid">
+<input name="season" type="number" placeholder="Sezon">
+<input name="episode" type="number" placeholder="Episod">
+<input name="popularity" type="number" placeholder="Popularitate">
+<select name="is_featured">
+<option value="false">Featured: Nu</option>
+<option value="true">Featured: Da</option>
+</select>
+<select name="is_trending">
+<option value="false">Trending: Nu</option>
+<option value="true">Trending: Da</option>
+</select>
+</div>
+
+<div class="row">
+<button type="submit">Salvează</button>
+<button type="button" onclick="resetForm()">Curăță formular</button>
+</div>
+</form>
+</div>
+
+<div class="box">
+<h2>Search PRO în catalog</h2>
+<div class="grid">
+<input id="searchQ" placeholder="Titlu, actor, regizor, tag...">
+<input id="searchActor" placeholder="Actor">
+<input id="searchGenre" placeholder="Gen">
+<input id="searchCountry" placeholder="Țară">
+<select id="searchCategory"></select>
+<select id="searchSort">
+<option value="newest">Cele mai noi</option>
+<option value="oldest">Cele mai vechi</option>
+<option value="year_desc">An descrescător</option>
+<option value="year_asc">An crescător</option>
+<option value="popular">Popular</option>
+<option value="views">Vizualizări</option>
+<option value="rating">Rating</option>
+</select>
+<button onclick="loadContent()">Caută</button>
+</div>
+</div>
+
+<div class="box">
+<h2>Conținut salvat</h2>
+<div id="contentList"></div>
+</div>
+
+<script>
+const categories = [
+"Filme","Seriale","Desene Animate Filme","Desene Animate Seriale",
+"Anime-uri Filme","Anime-uri Seriale","Filme Bollywood","Seriale Bollywood",
+"Filme Desene Dublate","Seriale Desene Dublate","Sport","Muzica",
+"All Collection","Disney","DC","Marvel","Minimax","Cartoon Network",
+"Fox Kids","Nickelodeon","Animax","Boomerang","Disney Junior",
+"Disney Channel","JimJam","Baby TV","Filme Razboi","Tv Show-uri"
+];
+
+const form = document.getElementById("contentForm");
+const list = document.getElementById("contentList");
+const metadataResults = document.getElementById("metadataResults");
+
+function initSelects(){
+  categorySelect.innerHTML = '<option value="">Categorie</option>' + categories.map(c=>`<option>${c}</option>`).join("");
+  searchCategory.innerHTML = '<option value="">Toate categoriile</option>' + categories.map(c=>`<option>${c}</option>`).join("");
+}
+initSelects();
+
+async function searchMetadata(){
+  const source = metadataSource.value;
+  const q = metadataQuery.value.trim();
+  if(!q) return alert("Scrie ceva de căutat.");
+
+  metadataResults.innerHTML = "Se caută...";
+  const res = await fetch(`/metadata/${source}?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+
+  if(!res.ok){
+    metadataResults.innerHTML = `<div class="result">Eroare: ${JSON.stringify(data.details || data)}</div>`;
+    return;
+  }
+
+  const items = normalizeMetadata(source, data);
+  metadataResults.innerHTML = items.map(item => `
+    <div class="result" onclick='fillForm(${JSON.stringify(item)})'>
+      <img src="${item.poster_url || "https://via.placeholder.com/300x450"}">
+      <div>
+        <b>${item.title || ""}</b>
+        <div class="small">${item.year || ""} ${item.type || ""} ${item.genres || ""}</div>
+        <p>${item.description || ""}</p>
+      </div>
+    </div>
+  `).join("");
+}
+
+function normalizeMetadata(source,data){
+  if(source==="tmdb"){
+    return data.map(x=>({
+      title:x.title||x.name,
+      description:x.overview||"",
+      poster_url:x.poster_path ? "https://image.tmdb.org/t/p/w500"+x.poster_path : "",
+      backdrop_url:x.backdrop_path ? "https://image.tmdb.org/t/p/original"+x.backdrop_path : "",
+      type:x.media_type==="tv"?"series":"movie",
+      year:(x.release_date||x.first_air_date||"").slice(0,4),
+      category:x.media_type==="tv"?"Seriale":"Filme",
+      genre:"TMDB",
+      genres:"TMDB",
+      tmdb_id:x.id,
+      popularity:Math.round(x.popularity||0)
+    }));
+  }
+
+  if(source==="omdb"){
+    return (data.Search||[]).map(x=>({
+      title:x.Title,
+      poster_url:x.Poster!=="N/A"?x.Poster:"",
+      type:x.Type==="series"?"series":"movie",
+      category:x.Type==="series"?"Seriale":"Filme",
+      year:String(x.Year||"").slice(0,4),
+      genre:"IMDb",
+      genres:"IMDb",
+      imdb_id:x.imdbID
+    }));
+  }
+
+  if(source==="youtube"){
+    return data.map(x=>{
+      const id=x.id?.videoId;
+      return {
+        title:x.snippet?.title,
+        description:x.snippet?.description,
+        poster_url:x.snippet?.thumbnails?.high?.url,
+        iframe_url:id ? "https://www.youtube.com/embed/"+id : "",
+        youtube_trailer:id ? "https://www.youtube.com/embed/"+id : "",
+        source_url:id ? "https://www.youtube.com/watch?v="+id : "",
+        year:x.snippet?.publishedAt?.slice(0,4),
+        tags:"trailer,youtube"
+      };
+    });
+  }
+
+  if(source==="anime"){
+    return data.map(x=>({
+      title:x.title,
+      description:x.synopsis,
+      poster_url:x.images?.jpg?.large_image_url || x.images?.jpg?.image_url || "",
+      backdrop_url:x.trailer?.images?.maximum_image_url || "",
+      type:"anime",
+      category:x.type==="Movie"?"Anime-uri Filme":"Anime-uri Seriale",
+      year:x.year,
+      genre:(x.genres||[]).map(g=>g.name).join(", "),
+      genres:(x.genres||[]).map(g=>g.name).join(", "),
+      source_url:x.url,
+      youtube_trailer:x.trailer?.embed_url || "",
+      iframe_url:x.trailer?.embed_url || ""
+    }));
+  }
+
+  if(["tv","korean","indian","telenovela"].includes(source)){
+    return data.map(x=>{
+      const s=x.show;
+      return {
+        title:s.name,
+        description:stripHtml(s.summary||""),
+        poster_url:s.image?.original || s.image?.medium || "",
+        type:"series",
+        category:source==="telenovela"?"Seriale":source==="indian"?"Seriale Bollywood":"Seriale",
+        year:s.premiered?s.premiered.slice(0,4):"",
+        genres:(s.genres||[]).join(", "),
+        genre:(s.genres||[])[0] || "",
+        source_url:s.url,
+        language:s.language || "",
+        rating:s.rating?.average || ""
+      };
+    });
+  }
+
+  if(source==="music"){
+    return data.map(x=>({
+      title:x.name,
+      description:x.disambiguation || x.type || "Artist",
+      type:"music",
+      category:"Muzica",
+      year:x["life-span"]?.begin?.slice(0,4) || "",
+      genre:"Music",
+      genres:"Music",
+      source_url:"https://musicbrainz.org/artist/"+x.id
+    }));
+  }
+
+  if(source==="sport"){
+    return data.map(x=>({
+      title:x.strTeam,
+      description:x.strDescriptionEN || "",
+      poster_url:x.strBadge || x.strLogo || "",
+      backdrop_url:x.strFanart1 || x.strBanner || "",
+      type:"sport",
+      category:"Sport",
+      year:x.intFormedYear || "",
+      genre:x.strSport || "",
+      genres:x.strSport || "",
+      country:x.strCountry || "",
+      source_url:x.strWebsite ? "https://" + x.strWebsite.replace(/^https?:\/\//,"") : "",
+      channel:x.strLeague || ""
+    }));
+  }
+
+  return [];
+}
+
+function stripHtml(html){
+  const div=document.createElement("div");
+  div.innerHTML=html;
+  return div.textContent || "";
+}
+
+function fillForm(item){
+  for(const [k,v] of Object.entries(item)){
+    if(form[k]) form[k].value = v ?? "";
+  }
+  window.scrollTo({top:form.offsetTop-20,behavior:"smooth"});
+}
+
+function resetForm(){
+  form.reset();
+  form.id.value="";
+  document.getElementById("formTitle").innerText="Adaugă / Editează conținut";
+}
+
+form.addEventListener("submit", async e=>{
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(form).entries());
+
+  ["year","season","episode","popularity"].forEach(k=>{
+    if(data[k]==="") data[k]=null;
+    else if(data[k]!==undefined) data[k]=Number(data[k]);
+  });
+
+  data.is_featured = data.is_featured === "true";
+  data.is_trending = data.is_trending === "true";
+
+  const id = data.id;
+  delete data.id;
+
+  const res = await fetch(id ? `/content/${id}` : "/content", {
+    method: id ? "PUT" : "POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  });
+
+  const result = await res.json();
+  if(res.ok){
+    alert(id ? "Actualizat!" : "Salvat!");
+    resetForm();
+    loadContent();
+  } else {
+    alert("Eroare: " + result.details);
+  }
+});
+
+async function loadContent(){
+  const params = new URLSearchParams();
+  if(searchQ.value) params.set("q", searchQ.value);
+  if(searchActor.value) params.set("actor", searchActor.value);
+  if(searchGenre.value) params.set("genre", searchGenre.value);
+  if(searchCountry.value) params.set("country", searchCountry.value);
+  if(searchCategory.value) params.set("category", searchCategory.value);
+  if(searchSort.value) params.set("sort", searchSort.value);
+
+  const res = await fetch("/content/search?" + params.toString());
+  const items = await res.json();
+
+  list.innerHTML = items.map(item=>`
+    <div class="card">
+      <img src="${item.poster_url || "https://via.placeholder.com/300x450"}">
+      <div>
+        <h3>${item.title}</h3>
+        <div class="small">${item.category || ""} | ${item.type || ""} | ${item.year || ""} | ${item.rating || ""}</div>
+        <p>${item.description || ""}</p>
+        <div class="small">Genuri: ${item.genres || item.genre || ""}</div>
+        <div class="small">Actori: ${item.actors || ""}</div>
+        <div class="small">Țară: ${item.country || ""} | Limbă: ${item.language || ""}</div>
+        <div class="actions">
+          <button onclick='editItem(${JSON.stringify(item)})'>Edit</button>
+          <button onclick='deleteItem(${item.id})'>Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function editItem(item){
+  for(const [k,v] of Object.entries(item)){
+    if(form[k]) form[k].value = v ?? "";
+  }
+  form.id.value=item.id;
+  document.getElementById("formTitle").innerText="Editează: " + item.title;
+  window.scrollTo({top:form.offsetTop-20,behavior:"smooth"});
+}
+
+async function deleteItem(id){
+  if(!confirm("Ștergi acest conținut?")) return;
+  await fetch("/content/"+id,{method:"DELETE"});
+  loadContent();
+}
+
+loadContent();
+</script>
+</body>
+</html>
