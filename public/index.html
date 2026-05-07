@@ -537,16 +537,44 @@ function getPlayable(item){
   return item.iframe_url || item.youtube_trailer || item.source_url || "";
 }
 
+
+let currentSources=[];
+
+function renderPlayerSources(sources=[]){
+  currentSources = sources || [];
+  if(!playerSources) return;
+
+  playerSources.innerHTML = currentSources.map((src,i)=>`
+    <button onclick="switchPlayerSource(${i})">
+      ${src.is_trailer ? "Trailer" : (src.label || "Server "+(i+1))}
+      ${src.quality ? " - "+src.quality : ""}
+      ${src.language ? " - "+src.language : ""}
+    </button>
+  `).join("");
+}
+
+function switchPlayerSource(index){
+  const src = currentSources[index];
+  if(!src) return;
+
+  const url = src.normalized_url || src.url;
+  playerTitle.innerText = (currentItem?.title || "Player") + " - " + (src.label || src.detected_type || src.source_type || "Source");
+  playerFrame.src = toEmbed(url);
+}
+
 async function getSmartPlay(item){
   try{
     const res = await fetch("/content-play/"+item.id);
     const data = await res.json();
 
+    const sources = data.sources || [];
+
     if(data.primary){
       return {
         url: data.primary.normalized_url || data.primary.url,
         type: data.primary.detected_type || data.primary.source_type || "iframe",
-        label: data.primary.label || "Primary"
+        label: data.primary.label || "Primary",
+        sources
       };
     }
 
@@ -554,7 +582,8 @@ async function getSmartPlay(item){
       return {
         url: data.trailer.normalized_url || data.trailer.url,
         type: data.trailer.detected_type || data.trailer.source_type || "iframe",
-        label: data.trailer.label || "Trailer"
+        label: data.trailer.label || "Trailer",
+        sources
       };
     }
   }catch(e){}
@@ -562,7 +591,8 @@ async function getSmartPlay(item){
   return {
     url: getPlayable(item),
     type: "iframe",
-    label: "Legacy"
+    label: "Legacy",
+    sources: []
   };
 }
 
@@ -579,6 +609,7 @@ async function playItem(item){
   currentItem=item;
   playerTitle.innerText=item.title + " - " + (source.label || "Play");
   playerFrame.src=toEmbed(url);
+  renderPlayerSources(source.sources || []);
   player.style.display="block";
   fetch("/content/"+item.id+"/view",{method:"POST"});
 }
@@ -624,6 +655,7 @@ function toEmbed(url){
 
 function closePlayer(){
   playerFrame.src="";
+  if(playerSources) playerSources.innerHTML="";
   player.style.display="none";
 }
 
