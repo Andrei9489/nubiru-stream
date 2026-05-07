@@ -560,7 +560,7 @@ async function runAiCommand(){
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -695,7 +695,7 @@ async function rebuildQuality(){
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -853,7 +853,7 @@ async function buildGraphForContent(){
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -1002,7 +1002,7 @@ async function loadGraphForContent(){
 
 
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -1146,6 +1146,9 @@ async function loadContent(){
   const items = await res.json();
   allContent = items;
   updateEpisodeContentSelect(items);
+  if(typeof updateSourceContentSelect === "function"){
+    updateSourceContentSelect();
+  }
 
   list.innerHTML = items.map(item=>`
     <div class="card">
@@ -1259,7 +1262,7 @@ async function runAiCommand(){
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -1394,7 +1397,7 @@ async function rebuildQuality(){
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -1552,7 +1555,7 @@ async function buildGraphForContent(){
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -1701,7 +1704,7 @@ async function loadGraphForContent(){
 
 
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -2000,7 +2003,7 @@ async function runAiCommand(){
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -2135,7 +2138,7 @@ async function rebuildQuality(){
   aiCommandResult.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -2293,7 +2296,7 @@ async function buildGraphForContent(){
   graphViewer.innerHTML = "<pre>"+JSON.stringify(data,null,2)+"</pre>";
   
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
@@ -2442,7 +2445,7 @@ async function loadGraphForContent(){
 
 
 function updateSourceContentSelect(){
-  if(!window.allContent) return;
+  if(typeof allContent === "undefined" || !allContent.length) return;
   sourceContentSelect.innerHTML = allContent.map(i=>`<option value="${i.id}">${i.id} - ${i.title}</option>`).join("");
 }
 
