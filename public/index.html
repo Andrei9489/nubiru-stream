@@ -480,6 +480,54 @@ function openAuth(){
   authModal.style.display="grid";
 }
 
+
+async function loadHomepageRails(){
+  const userId = user?.id || 1;
+
+  try{
+    const res = await fetch("/homepage?user_id="+userId);
+    const data = await res.json();
+
+    renderRail("homeContinue", data.continueWatching || [], true);
+    renderRail("homeTrending", data.trending || []);
+    renderRail("homeAiPicks", data.aiPicks || []);
+    renderRail("homeSemantic", data.semantic || []);
+    renderRail("homeMovies", data.movies || []);
+    renderRail("homeSeries", data.series || []);
+  }catch(e){
+    console.log("homepage rails error", e);
+  }
+}
+
+function renderRail(id,data,isContinue=false){
+  const box = document.getElementById(id);
+  if(!box) return;
+
+  if(!data.length){
+    box.innerHTML = "<span class='small'>Nimic momentan.</span>";
+    return;
+  }
+
+  box.innerHTML = data.map(x=>{
+    if(isContinue){
+      return `
+      <div class="card" onclick='resumeContent(${JSON.stringify(x)})'>
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div class="cardInfo">
+          <b>${x.title}</b><br>
+          <span class="small">Progres: ${x.percent || 0}%</span>
+          <div style="height:6px;background:#374151;border-radius:8px;margin-top:6px">
+            <div style="height:6px;background:#8b5cf6;border-radius:8px;width:${x.percent || 0}%"></div>
+          </div>
+          <button onclick='event.stopPropagation();resumeContent(${JSON.stringify(x)})'>Resume</button>
+        </div>
+      </div>`;
+    }
+
+    return card(x);
+  }).join("");
+}
+
 async function load(){
   const res=await fetch("/content/search?sort=popular");
   items=await res.json();
