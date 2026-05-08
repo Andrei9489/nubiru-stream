@@ -378,7 +378,7 @@ button{
       <h1 id="heroTitle">Nubiru Stream</h1>
       <p id="heroDesc">Player cu filme, seriale, sezoane și episoade.</p>
       <div class="heroActions">
-        <button onclick="playHero()">▶ Play</button>
+        <button id="heroPlayBtn" onclick="playHero()">▶ Play</button>
         <button onclick="openEpisodes(heroItem)">📺 Episoade</button>
         <button onclick="addHeroWatchlist()">❤️ Watchlist</button>
       </div>
@@ -409,13 +409,17 @@ button{
 
 <section class="player" id="player">
   <div class="playerTop">
-    <strong id="playerTitle">Player</strong>
+    <div>
+<strong id="playerTitle">Player</strong>
+<div id="playerSourceBar" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;max-width:70vw"></div>
+</div>
     <div>
       <button onclick="saveProgress()">Salvează progres</button>
       <button onclick="closePlayer()">Închide</button>
     </div>
   </div>
   <iframe id="playerFrame" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+
 </section>
 
 <div class="modal" id="authModal">
@@ -485,15 +489,26 @@ async function load(){
 }
 load();
 
+setTimeout(()=>{
+  const btn = document.getElementById("heroPlayBtn");
+  if(btn){
+    btn.onclick = function(){
+      if(heroItem){
+        playItem(heroItem);
+      }else{
+        alert("Nu există content selectat.");
+      }
+    };
+  }
+},1000);
+
+
 function renderHero(item){
   if(!item)return;
   heroItem=item;
-  heroTitle.innerText=item.title || "Nubiru Stream";
-  heroDesc.innerText=item.description || "";
-  const bg = item.backdrop_url || item.poster_url || "";
-  hero.style.background = bg
-    ? `linear-gradient(90deg,rgba(5,7,18,.95),rgba(5,7,18,.35)),url('${bg}') center/cover`
-    : `linear-gradient(90deg,#111827,#050712)`;
+  heroTitle.innerText=item.title;
+  heroDesc.innerText=item.description||"";
+  hero.style.background=`linear-gradient(90deg,rgba(5,7,18,.95),rgba(5,7,18,.35)),url('${item.backdrop_url||item.poster_url||""}') center/cover`;
 }
 
 function escapeJson(obj){
@@ -538,11 +553,80 @@ function getPlayable(item){
 }
 
 
+
+let playerAvailableSources = [];
+
+function renderSourceButtons(sources){
+  const box = document.getElementById("playerSourceButtons");
+  if(!box) return;
+
+  playerAvailableSources = sources || [];
+
+  box.innerHTML = playerAvailableSources.map((src,index)=>{
+    const label = src.is_trailer ? "Trailer" : (src.label || ("Server "+(index+1)));
+    const quality = src.quality ? " " + src.quality : "";
+    const lang = src.language ? " " + src.language : "";
+    return `<button style="background:#8b5cf6;color:white;padding:10px;border-radius:12px;border:0;font-weight:bold" onclick="playSourceIndex(${index})">${label}${quality}${lang}</button>`;
+  }).join("");
+}
+
+function playSourceIndex(index){
+  const src = playerAvailableSources[index];
+  if(!src) return;
+
+  const url = src.normalized_url || src.url;
+  playerFrame.src = toEmbed(url);
+  playerTitle.innerText = (currentItem?.title || "Player") + " - " + (src.label || src.source_type || "Source");
+}
+
+
+let pendingPlayItem = null;
+let pendingSources = [];
+
+function openSourcePicker(item, sources){
+  pendingPlayItem = item;
+  pendingSources = sources || [];
+
+  sourcePickerTitle.innerText = item.title || "";
+
+  sourcePickerList.innerHTML = pendingSources.map((src,i)=>{
+    const label = src.is_trailer ? "🎬 Trailer" : (src.label || "▶ Server "+(i+1));
+    const q = src.quality ? " - " + src.quality : "";
+    const l = src.language ? " - " + src.language : "";
+    return `
+      <div class="episode">
+        <div>
+          <b>${label}${q}${l}</b>
+          <p class="small">${src.detected_type || src.source_type || ""}</p>
+        </div>
+        <button onclick="playPickedSource(${i})">Play</button>
+      </div>
+    `;
+  }).join("");
+
+  sourcePickerModal.style.display = "grid";
+}
+
+function playPickedSource(index){
+  const src = pendingSources[index];
+  if(!src || !pendingPlayItem) return;
+
+  const url = src.normalized_url || src.url;
+  currentItem = pendingPlayItem;
+
+  playerTitle.innerText = pendingPlayItem.title + " - " + (src.label || src.source_type || "Source");
+  playerFrame.src = toEmbed(url);
+
+  sourcePickerModal.style.display = "none";
+  player.style.display = "block";
+
+  fetch("/content/"+pendingPlayItem.id+"/view",{method:"POST"});
+}
+
 async function getSmartPlay(item){
   try{
     const res = await fetch("/content-play/"+item.id);
     const data = await res.json();
-
     const sources = data.sources || [];
 
     if(data.primary){
@@ -550,7 +634,7 @@ async function getSmartPlay(item){
         url: data.primary.normalized_url || data.primary.url,
         type: data.primary.detected_type || data.primary.source_type || "iframe",
         label: data.primary.label || "Primary",
-        sources
+        sources: sources
       };
     }
 
@@ -559,10 +643,12 @@ async function getSmartPlay(item){
         url: data.trailer.normalized_url || data.trailer.url,
         type: data.trailer.detected_type || data.trailer.source_type || "iframe",
         label: data.trailer.label || "Trailer",
-        sources
+        sources: sources
       };
     }
-  }catch(e){}
+  }catch(e){
+    console.log("getSmartPlay error", e);
+  }
 
   return {
     url: getPlayable(item),
@@ -572,13 +658,41 @@ async function getSmartPlay(item){
   };
 }
 
-function playHero(){
-  if(heroItem)playItem(heroItem);
+
+let playerSourcesList = [];
+
+function renderPlayerSourceBar(sources){
+  const bar = document.getElementById("playerSourceBar");
+  if(!bar) return;
+
+  playerSourcesList = sources || [];
+
+  bar.innerHTML = playerSourcesList.map((src,i)=>{
+    const label = src.is_trailer ? "🎬 Trailer" : (src.label || "▶ Server "+(i+1));
+    const q = src.quality ? " " + src.quality : "";
+    const l = src.language ? " " + src.language : "";
+    return `<button style="background:#8b5cf6;color:white;border:0;border-radius:14px;padding:10px 14px;font-weight:bold;font-size:13px" onclick="playPlayerSource(${i})">${label}${q}${l}</button>`;
+  }).join("");
+}
+
+function playPlayerSource(i){
+  const src = playerSourcesList[i];
+  if(!src) return;
+
+  const url = src.normalized_url || src.url;
+  playerFrame.src = toEmbed(url);
+  playerTitle.innerText = (currentItem?.title || "Player") + " - " + (src.label || src.source_type || "Source");
 }
 
 async function playItem(item){
   const source = await getSmartPlay(item);
   const url = source.url;
+  const sources = source.sources || [];
+
+  if(sources.length > 1){
+    openSourcePicker(item, sources);
+    return;
+  }
 
   if(!url)return alert("Nu are video/trailer.");
 
@@ -630,6 +744,8 @@ function toEmbed(url){
 
 function closePlayer(){
   playerFrame.src="";
+  const bar=document.getElementById("playerSourceBar");
+  if(bar)bar.innerHTML="";
   player.style.display="none";
 }
 
@@ -752,11 +868,37 @@ async function loadWatchlist(){
 }
 
 async function loadHistory(){
-  if(!token)return openAuth();
-  const res=await fetch("/history",{headers:authHeaders()});
-  const data=await res.json();
-  historyBox.innerHTML=data.length?data.map(card).join(""):"Nu ai continue watching.";
+  const userId = user?.id || 1;
+  const res = await fetch("/continue-watching?user_id="+userId);
+  const data = await res.json();
+
+  historyBox.innerHTML = data.length ? data.map(x=>`
+    <div class="card" onclick='resumeContent(${JSON.stringify(x)})'>
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div class="cardInfo">
+        <b>${x.title}</b><br>
+        <span class="small">${x.episode_title ? "S"+x.season_number+" E"+x.episode_number+" - "+x.episode_title : ""}</span><br>
+        <span class="small">Progres: ${x.percent || 0}%</span>
+        <div style="height:6px;background:#374151;border-radius:8px;margin-top:6px">
+          <div style="height:6px;background:#8b5cf6;border-radius:8px;width:${x.percent || 0}%"></div>
+        </div>
+        <button onclick='event.stopPropagation();resumeContent(${JSON.stringify(x)})'>Resume</button>
+      </div>
+    </div>
+  `).join("") : "Nu ai continue watching.";
 }
+
+async function resumeContent(item){
+  const content = items.find(x=>x.id === item.content_id) || {
+    id:item.content_id,
+    title:item.title,
+    poster_url:item.poster_url,
+    backdrop_url:item.backdrop_url
+  };
+
+  await playItem(content);
+}
+
 
 async function loadRecommendations(){
   if(!token)return openAuth();
@@ -766,17 +908,32 @@ async function loadRecommendations(){
 }
 
 async function saveProgress(){
-  if(!token)return openAuth();
   if(!currentItem)return;
 
-  await fetch("/history/"+currentItem.id,{
+  const userId = user?.id || 1;
+
+  const res = await fetch("/watch-progress",{
     method:"POST",
-    headers:authHeaders(),
-    body:JSON.stringify({progress_seconds:120,duration_seconds:7200,completed:false})
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      content_id:currentItem.id,
+      episode_id:null,
+      progress_seconds:120,
+      duration_seconds:1440,
+      completed:false
+    })
   });
 
-  alert("Progres salvat");
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Progres salvat: "+(data.percent || 0)+"%");
+  }else{
+    alert(data.details || data.error || "Eroare progres");
+  }
 }
+
 
 function showSection(section){
   homeSection.style.display=section==="home"?"block":"none";
@@ -789,5 +946,15 @@ function showSection(section){
   if(section==="recommendations")loadRecommendations();
 }
 </script>
+
+<div class="modal" id="sourcePickerModal">
+  <div class="modalBox">
+    <h2>Alege sursa</h2>
+    <p class="small" id="sourcePickerTitle"></p>
+    <div id="sourcePickerList"></div>
+    <button onclick="sourcePickerModal.style.display='none'">Închide</button>
+  </div>
+</div>
+
 </body>
 </html>

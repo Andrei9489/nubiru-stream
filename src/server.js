@@ -2083,6 +2083,116 @@ app.post("/ai/semantic/rebuild", async (req, res) => {
 });
 
 
+
+/* CONTINUE WATCHING REAL */
+app.post("/watch-progress", async (req, res) => {
+  try {
+    const {
+      user_id,
+      content_id,
+      episode_id,
+      progress_seconds,
+      duration_seconds,
+      completed
+    } = req.body;
+
+    if (!content_id) {
+      return res.status(400).json({ error: "content_id required" });
+    }
+
+    const progress = Number(progress_seconds || 0);
+    const duration = Number(duration_seconds || 0);
+    const isCompleted = completed === true || (duration > 0 && progress / duration >= 0.9);
+
+    const result = await pool.query(
+      `INSERT INTO watch_history
+        (user_id, content_id, episode_id, progress_seconds, duration_seconds, completed, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW())
+       ON CONFLICT (user_id, content_id)
+       DO UPDATE SET
+        episode_id=$3,
+        progress_seconds=$4,
+        duration_seconds=$5,
+        completed=$6,
+        updated_at=NOW()
+       RETURNING *`,
+      [
+        user_id || null,
+        content_id,
+        episode_id || null,
+        progress,
+        duration,
+        isCompleted
+      ]
+    );
+
+    res.json({
+      ok: true,
+      progress: result.rows[0],
+      percent: duration ? Math.round((progress / duration) * 100) : 0
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Watch progress error", details: err.message });
+  }
+});
+
+app.get("/continue-watching", async (req, res) => {
+  try {
+    const userId = req.query.user_id || null;
+
+    const result = await pool.query(
+      `SELECT
+        h.*,
+        c.title,
+        c.poster_url,
+        c.backdrop_url,
+        c.type,
+        c.category,
+        c.year,
+        e.season_number,
+        e.episode_number,
+        e.title AS episode_title,
+        CASE
+          WHEN h.duration_seconds > 0
+          THEN ROUND((h.progress_seconds::numeric / h.duration_seconds::numeric) * 100)
+          ELSE 0
+        END AS percent
+       FROM watch_history h
+       JOIN contents c ON c.id = h.content_id
+       LEFT JOIN episodes e ON e.id = h.episode_id
+       WHERE ($1::int IS NULL OR h.user_id=$1)
+         AND COALESCE(h.completed,false)=false
+       ORDER BY h.updated_at DESC
+       LIMIT 50`,
+      [userId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Continue watching error", details: err.message });
+  }
+});
+
+app.get("/resume/:contentId", async (req, res) => {
+  try {
+    const userId = req.query.user_id || null;
+
+    const result = await pool.query(
+      `SELECT *
+       FROM watch_history
+       WHERE content_id=$1
+         AND ($2::int IS NULL OR user_id=$2)
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [req.params.contentId, userId]
+    );
+
+    res.json(result.rows[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: "Resume error", details: err.message });
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });

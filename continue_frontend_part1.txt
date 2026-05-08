@@ -1,0 +1,31 @@
+async function loadHistory(){
+  const userId = user?.id || 1;
+  const res = await fetch("/continue-watching?user_id="+userId);
+  const data = await res.json();
+
+  historyBox.innerHTML = data.length ? data.map(x=>`
+    <div class="card" onclick='resumeContent(${JSON.stringify(x)})'>
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div class="cardInfo">
+        <b>${x.title}</b><br>
+        <span class="small">${x.episode_title ? "S"+x.season_number+" E"+x.episode_number+" - "+x.episode_title : ""}</span><br>
+        <span class="small">Progres: ${x.percent || 0}%</span>
+        <div style="height:6px;background:#374151;border-radius:8px;margin-top:6px">
+          <div style="height:6px;background:#8b5cf6;border-radius:8px;width:${x.percent || 0}%"></div>
+        </div>
+        <button onclick='event.stopPropagation();resumeContent(${JSON.stringify(x)})'>Resume</button>
+      </div>
+    </div>
+  `).join("") : "Nu ai continue watching.";
+}
+
+async function resumeContent(item){
+  const content = items.find(x=>x.id === item.content_id) || {
+    id:item.content_id,
+    title:item.title,
+    poster_url:item.poster_url,
+    backdrop_url:item.backdrop_url
+  };
+
+  await playItem(content);
+}
