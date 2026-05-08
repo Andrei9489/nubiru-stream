@@ -2285,6 +2285,201 @@ app.get("/homepage", async (req, res) => {
   }
 });
 
+
+function analyzeSourceUrl(url = ""){
+  if (typeof analyzeSource === "function") {
+    return analyzeSource(url);
+  }
+
+  if (typeof detectSourceType === "function") {
+    const detected = detectSourceType(url);
+    return {
+      original_url: url,
+      normalized_url: normalizeSourceUrl ? normalizeSourceUrl(url) : url,
+      detected_type: detected,
+      source_type: detected,
+      can_embed: ["youtube","iframe"].includes(detected),
+      can_html5: ["mp4","m3u8","audio"].includes(detected),
+      is_youtube: detected === "youtube",
+      is_stream: detected === "m3u8",
+      is_audio: detected === "audio"
+    };
+  }
+
+  return {
+    original_url: url,
+    normalized_url: url,
+    detected_type: "iframe",
+    source_type: "iframe",
+    can_embed: true,
+    can_html5: false,
+    is_youtube: false,
+    is_stream: false,
+    is_audio: false
+  };
+}
+
+/* EPISODE PLAYER PRO */
+app.get("/series-player/:contentId", async (req, res) => {
+  try {
+    const contentId = req.params.contentId;
+
+    const contentResult = await pool.query(
+      "SELECT * FROM contents WHERE id=$1",
+      [contentId]
+    );
+
+    const content = contentResult.rows[0];
+
+    if (!content) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    const seasonsResult = await pool.query(
+      `SELECT *
+       FROM seasons
+       WHERE content_id=$1
+       ORDER BY season_number ASC`,
+      [contentId]
+    );
+
+    const episodesResult = await pool.query(
+      `SELECT *
+       FROM episodes
+       WHERE content_id=$1
+       ORDER BY season_number ASC, episode_number ASC`,
+      [contentId]
+    );
+
+    const linksResult = await pool.query(
+      `SELECT *
+       FROM content_links
+       WHERE content_id=$1
+       ORDER BY is_primary DESC, is_trailer ASC, sort_order ASC, id ASC`,
+      [contentId]
+    );
+
+    const episodeLinks = {};
+    const contentLinks = [];
+
+    for (const link of linksResult.rows) {
+      const smart = analyzeSourceUrl(link.url || "");
+
+      const fullLink = {
+        ...link,
+        normalized_url: smart.normalized_url,
+        detected_type: smart.detected_type,
+        can_embed: smart.can_embed,
+        can_html5: smart.can_html5,
+        is_stream: smart.is_stream,
+        is_audio: smart.is_audio
+      };
+
+      if (link.episode_id) {
+        if (!episodeLinks[link.episode_id]) episodeLinks[link.episode_id] = [];
+        episodeLinks[link.episode_id].push(fullLink);
+      } else {
+        contentLinks.push(fullLink);
+      }
+    }
+
+    const episodes = episodesResult.rows.map(ep => ({
+      ...ep,
+      links: episodeLinks[ep.id] || []
+    }));
+
+    const seasons = seasonsResult.rows.map(season => ({
+      ...season,
+      episodes: episodes.filter(ep => ep.season_number === season.season_number)
+    }));
+
+    res.json({
+      content,
+      seasons,
+      episodes,
+      content_links: contentLinks
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "Series player error",
+      details: err.message
+    });
+  }
+});
+
+app.get("/episode-play/:episodeId", async (req, res) => {
+  try {
+    const episodeId = req.params.episodeId;
+
+    const episodeResult = await pool.query(
+      "SELECT * FROM episodes WHERE id=$1",
+      [episodeId]
+    );
+
+    const episode = episodeResult.rows[0];
+
+    if (!episode) {
+      return res.status(404).json({ error: "Episode not found" });
+    }
+
+    const linksResult = await pool.query(
+      `SELECT *
+       FROM content_links
+       WHERE episode_id=$1
+       ORDER BY is_primary DESC, is_trailer ASC, sort_order ASC, id ASC`,
+      [episodeId]
+    );
+
+    let sources = linksResult.rows.map(link => {
+      const smart = analyzeSourceUrl(link.url || "");
+      return {
+        ...link,
+        normalized_url: smart.normalized_url,
+        detected_type: smart.detected_type,
+        can_embed: smart.can_embed,
+        can_html5: smart.can_html5,
+        is_stream: smart.is_stream,
+        is_audio: smart.is_audio
+      };
+    });
+
+    // fallback: dacă episodul nu are surse proprii, folosește sursele contentului
+    if (!sources.length) {
+      const fallback = await pool.query(
+        `SELECT *
+         FROM content_links
+         WHERE content_id=$1 AND episode_id IS NULL
+         ORDER BY is_primary DESC, is_trailer ASC, sort_order ASC, id ASC`,
+        [episode.content_id]
+      );
+
+      sources = fallback.rows.map(link => {
+        const smart = analyzeSourceUrl(link.url || "");
+        return {
+          ...link,
+          normalized_url: smart.normalized_url,
+          detected_type: smart.detected_type,
+          can_embed: smart.can_embed,
+          can_html5: smart.can_html5,
+          is_stream: smart.is_stream,
+          is_audio: smart.is_audio
+        };
+      });
+    }
+
+    res.json({
+      episode,
+      primary: sources.find(x => x.is_primary) || sources[0] || null,
+      sources
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "Episode play error",
+      details: err.message
+    });
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });

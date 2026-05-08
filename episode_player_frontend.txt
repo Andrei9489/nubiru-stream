@@ -1,0 +1,11 @@
+<div class="modal" id="episodePlayerModal">
+  <div class="modalBox" style="max-width:980px">
+    <h2 id="episodePlayerTitle">Episoade</h2>
+    <p class="small" id="episodePlayerDesc"></p>
+
+    <div id="seasonTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"></div>
+    <div id="episodeList"></div>
+
+    <button onclick="episodePlayerModal.style.display='none'">Închide</button>
+  </div>
+</div>

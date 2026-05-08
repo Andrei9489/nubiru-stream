@@ -1,0 +1,115 @@
+
+let realEpisodeData = null;
+let realEpisodeSources = [];
+let realEpisodeCurrentIndex = 0;
+
+async function playEpisode(episodeId){
+  const res = await fetch("/episode-play/"+episodeId);
+  const data = await res.json();
+
+  if(data.error){
+    alert(data.details || data.error);
+    return;
+  }
+
+  realEpisodeData = data;
+  realEpisodeSources = data.sources || [];
+  realEpisodeCurrentIndex = 0;
+
+  renderRealEpisodePlayer();
+}
+
+function renderRealEpisodePlayer(){
+  const ep = realEpisodeData.episode;
+  const src = realEpisodeSources[realEpisodeCurrentIndex];
+
+  if(!src){
+    alert("Episodul nu are sursă.");
+    return;
+  }
+
+  currentItem = {
+    id: ep.content_id,
+    episode_id: ep.id,
+    title: "S"+ep.season_number+" E"+ep.episode_number+" - "+ep.title
+  };
+
+  playerTitle.innerText = currentItem.title;
+
+  const url = src.normalized_url || src.url;
+  playerFrame.src = toEmbed(url);
+
+  episodePlayerModal.style.display = "none";
+  player.style.display = "block";
+
+  renderEpisodeServerBar();
+
+  fetch("/watch-progress",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:user?.id || 1,
+      content_id:ep.content_id,
+      episode_id:ep.id,
+      progress_seconds:0,
+      duration_seconds:ep.duration_seconds || 1440,
+      completed:false
+    })
+  }).catch(()=>{});
+
+  if(typeof startAutoSaveProgress === "function"){
+    startAutoSaveProgress();
+  }
+}
+
+function renderEpisodeServerBar(){
+  let bar = document.getElementById("episodeServerBar");
+
+  if(!bar){
+    bar = document.createElement("div");
+    bar.id = "episodeServerBar";
+    bar.style.cssText = "position:fixed;top:55px;left:10px;right:10px;z-index:99999;display:flex;gap:8px;flex-wrap:wrap";
+    player.appendChild(bar);
+  }
+
+  bar.innerHTML = realEpisodeSources.map((src,i)=>{
+    const active = i === realEpisodeCurrentIndex;
+    const label = src.is_trailer ? "🎬 Trailer" : (src.label || "Server "+(i+1));
+    const q = src.quality ? " "+src.quality : "";
+    const l = src.language ? " "+src.language : "";
+
+    return `<button style="
+      background:${active ? "#22c55e" : "#7c3aed"};
+      color:white;
+      border:0;
+      border-radius:12px;
+      padding:8px 12px;
+      font-weight:bold"
+      onclick="switchEpisodeServer(${i})">${label}${q}${l}</button>`;
+  }).join("") + `
+    <button style="background:#111827;color:white;border:1px solid #7c3aed;border-radius:12px;padding:8px 12px;font-weight:bold"
+      onclick="playNextEpisode()">⏭ Următorul</button>
+  `;
+}
+
+function switchEpisodeServer(index){
+  realEpisodeCurrentIndex = index;
+  renderRealEpisodePlayer();
+}
+
+function playNextEpisode(){
+  if(!currentSeriesData || !realEpisodeData) return;
+
+  const all = currentSeriesData.episodes || [];
+  const currentId = realEpisodeData.episode.id;
+  const index = all.findIndex(e=>e.id === currentId);
+  const next = all[index + 1];
+
+  if(!next){
+    alert("Nu există episod următor.");
+    return;
+  }
+
+  playEpisode(next.id);
+}
+

@@ -1,0 +1,104 @@
+
+let currentSeriesData = null;
+let currentSeasonNumber = null;
+
+async function openEpisodes(item){
+  if(!item || !item.id) return alert("Content invalid.");
+
+  const res = await fetch("/series-player/"+item.id);
+  const data = await res.json();
+
+  if(data.error){
+    alert(data.details || data.error);
+    return;
+  }
+
+  currentSeriesData = data;
+  currentSeasonNumber = data.seasons?.[0]?.season_number || 1;
+
+  episodePlayerTitle.innerText = data.content.title || "Episoade";
+  episodePlayerDesc.innerText = data.content.description || "";
+
+  renderSeasonTabs();
+  renderEpisodesForSeason(currentSeasonNumber);
+
+  episodePlayerModal.style.display = "grid";
+}
+
+function renderSeasonTabs(){
+  if(!currentSeriesData) return;
+
+  seasonTabs.innerHTML = (currentSeriesData.seasons || []).map(season=>`
+    <button onclick="renderEpisodesForSeason(${season.season_number})">
+      Sezonul ${season.season_number}
+    </button>
+  `).join("");
+}
+
+function renderEpisodesForSeason(seasonNumber){
+  currentSeasonNumber = seasonNumber;
+
+  const season = (currentSeriesData.seasons || []).find(s=>Number(s.season_number) === Number(seasonNumber));
+  const episodes = season?.episodes || [];
+
+  episodeList.innerHTML = `
+    <h3>Sezonul ${seasonNumber}</h3>
+    ${episodes.map(ep=>`
+      <div class="episode" style="align-items:flex-start">
+        <div>
+          <b>E${ep.episode_number}. ${ep.title}</b>
+          <p class="small">${ep.description || ""}</p>
+          <p class="small">Durată: ${Math.round((ep.duration_seconds || 0)/60)} min</p>
+        </div>
+        <button onclick="playEpisode(${ep.id})">▶ Play</button>
+      </div>
+    `).join("") || "<p class='small'>Nu există episoade.</p>"}
+  `;
+}
+
+async function playEpisode(episodeId){
+  const res = await fetch("/episode-play/"+episodeId);
+  const data = await res.json();
+
+  if(data.error){
+    alert(data.details || data.error);
+    return;
+  }
+
+  const ep = data.episode;
+  const src = data.primary || data.sources?.[0];
+
+  if(!src){
+    alert("Episodul nu are sursă.");
+    return;
+  }
+
+  currentItem = {
+    id: ep.content_id,
+    title: "S"+ep.season_number+" E"+ep.episode_number+" - "+ep.title
+  };
+
+  playerTitle.innerText = currentItem.title;
+  playerFrame.src = toEmbed(src.normalized_url || src.url);
+
+  episodePlayerModal.style.display = "none";
+  player.style.display = "block";
+
+  fetch("/watch-progress",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:user?.id || 1,
+      content_id:ep.content_id,
+      episode_id:ep.id,
+      progress_seconds:0,
+      duration_seconds:ep.duration_seconds || 1440,
+      completed:false
+    })
+  }).catch(()=>{});
+
+  if(typeof startAutoSaveProgress === "function"){
+    startAutoSaveProgress();
+  }
+}
+
