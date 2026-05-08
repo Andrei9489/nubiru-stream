@@ -1,0 +1,41 @@
+let autoSaveTimer = null;
+let playStartedAt = null;
+
+function startAutoSaveProgress(){
+  stopAutoSaveProgress();
+
+  if(!currentItem) return;
+
+  playStartedAt = Date.now();
+
+  autoSaveTimer = setInterval(()=>{
+    autoSaveProgressNow();
+  },15000);
+}
+
+function stopAutoSaveProgress(){
+  if(autoSaveTimer){
+    clearInterval(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+}
+
+async function autoSaveProgressNow(){
+  if(!currentItem || !playStartedAt) return;
+
+  const userId = user?.id || 1;
+  const watchedSeconds = Math.floor((Date.now() - playStartedAt) / 1000);
+
+  await fetch("/watch-progress",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      content_id:currentItem.id,
+      episode_id:null,
+      progress_seconds:Math.max(120, watchedSeconds),
+      duration_seconds:1440,
+      completed:false
+    })
+  });
+}
