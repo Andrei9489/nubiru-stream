@@ -461,6 +461,64 @@ button{
 }
 </style>
 
+
+<style id="hero-cinematic-autoplay">
+.hero{
+  position:relative;
+  overflow:hidden;
+  min-height:520px !important;
+  background:#050712;
+}
+#heroVideoBg{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  border:0;
+  opacity:.28;
+  transform:scale(1.18);
+  pointer-events:none;
+  z-index:0;
+}
+.hero::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    linear-gradient(90deg,#050712 0%,rgba(5,7,18,.85) 30%,rgba(5,7,18,.25) 100%),
+    linear-gradient(0deg,#050712 0%,transparent 45%);
+  z-index:1;
+}
+.hero > div{
+  position:relative;
+  z-index:2;
+}
+.heroBadge{
+  display:inline-block;
+  background:#8b5cf6;
+  color:white;
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:bold;
+  margin-bottom:12px;
+}
+.heroActions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+.heroActions button{
+  padding:12px 18px;
+  border-radius:14px;
+}
+@media(max-width:900px){
+  .hero{min-height:440px !important}
+  #heroVideoBg{opacity:.18}
+}
+</style>
+
 </head>
 
 <body>
@@ -679,12 +737,60 @@ setTimeout(()=>{
 },1000);
 
 
+
+let heroTrailerMuted = true;
+
+async function loadHeroTrailer(item){
+  try{
+    if(!item) return;
+
+    let old = document.getElementById("heroVideoBg");
+    if(old) old.remove();
+
+    const res = await fetch("/content-play/"+item.id);
+    const data = await res.json();
+    const trailer = data.trailer || data.primary;
+
+    if(!trailer) return;
+
+    let url = trailer.normalized_url || trailer.url || "";
+    if(!url) return;
+
+    url = toEmbed(url);
+
+    if(url.includes("youtube.com/embed/")){
+      url += (url.includes("?") ? "&" : "?") + "autoplay=1&mute=1&controls=0&loop=1&playlist=" + url.split("/embed/")[1].split("?")[0];
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.id = "heroVideoBg";
+    iframe.src = url;
+    iframe.allow = "autoplay; fullscreen; picture-in-picture";
+    iframe.setAttribute("allowfullscreen","true");
+
+    hero.prepend(iframe);
+  }catch(e){
+    console.log("hero trailer error", e);
+  }
+}
+
+function toggleHeroTrailer(){
+  const frame = document.getElementById("heroVideoBg");
+  if(!frame){
+    if(heroItem) loadHeroTrailer(heroItem);
+    return;
+  }
+
+  frame.style.display = frame.style.display === "none" ? "block" : "none";
+}
+
 function renderHero(item){
   if(!item)return;
   heroItem=item;
   heroTitle.innerText=item.title;
   heroDesc.innerText=item.description||"";
   hero.style.background=`linear-gradient(90deg,rgba(5,7,18,.95),rgba(5,7,18,.35)),url('${item.backdrop_url||item.poster_url||""}') center/cover`;
+  loadHeroTrailer(item);
 }
 
 function escapeJson(obj){
