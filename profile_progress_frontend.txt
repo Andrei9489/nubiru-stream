@@ -1,0 +1,108 @@
+
+async function saveProfileProgressNow(){
+  try{
+    const profileId = localStorage.getItem("activeProfileId") || 1;
+
+    if(!profileId || !currentItem) return;
+
+    const episodeId = currentItem.episode_id || null;
+    const season = realEpisodeData?.episode?.season_number || 1;
+    const episode = realEpisodeData?.episode?.episode_number || 1;
+    const duration = realEpisodeData?.episode?.duration_seconds || 1440;
+
+    const watchedSeconds = playStartedAt
+      ? Math.floor((Date.now() - playStartedAt) / 1000)
+      : 0;
+
+    await fetch("/profile-progress",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        profile_id:Number(profileId),
+        content_id:currentItem.id,
+        season,
+        episode,
+        progress_seconds:Math.max(30, watchedSeconds),
+        duration_seconds:duration
+      })
+    });
+  }catch(e){
+    console.log("profile progress save error", e);
+  }
+}
+
+function startProfileProgressAutoSave(){
+  if(window.profileProgressTimer){
+    clearInterval(window.profileProgressTimer);
+  }
+
+  window.profileProgressTimer = setInterval(()=>{
+    saveProfileProgressNow();
+  },15000);
+}
+
+function stopProfileProgressAutoSave(){
+  if(window.profileProgressTimer){
+    clearInterval(window.profileProgressTimer);
+    window.profileProgressTimer = null;
+  }
+}
+
+async function loadProfileContinueWatching(){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+  const res = await fetch("/profile-progress/"+profileId);
+  const data = await res.json();
+
+  const box = document.getElementById("homeContinue");
+  if(!box) return;
+
+  if(!data.length){
+    box.innerHTML = "<span class='small'>Nimic disponibil.</span>";
+    return;
+  }
+
+  box.innerHTML = data.map(x=>{
+    const percent = x.duration_seconds
+      ? Math.round((x.progress_seconds / x.duration_seconds) * 100)
+      : 0;
+
+    return `
+      <div class="card" onclick="resumeProfileProgress(${x.content_id},${x.season},${x.episode})">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div class="cardInfo">
+          <b>${x.title}</b><br>
+          <span class="small">S${x.season} E${x.episode}</span><br>
+          <span class="small">Progres: ${percent}%</span>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${percent}%"></div>
+          </div>
+          <button onclick="event.stopPropagation();resumeProfileProgress(${x.content_id},${x.season},${x.episode})">
+            Resume
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function resumeProfileProgress(contentId, season, episode){
+  const res = await fetch("/series-player/"+contentId);
+  const data = await res.json();
+
+  const ep = (data.episodes || []).find(e =>
+    Number(e.season_number) === Number(season) &&
+    Number(e.episode_number) === Number(episode)
+  );
+
+  if(ep){
+    currentSeriesData = data;
+    await playEpisode(ep.id);
+  }else{
+    const item = items.find(x=>x.id === contentId);
+    if(item) playItem(item);
+  }
+}
+
+setTimeout(loadProfileContinueWatching,1000);
+setTimeout(loadProfileContinueWatching,2500);
+

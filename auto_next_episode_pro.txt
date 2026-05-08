@@ -1,0 +1,221 @@
+
+function getNextEpisode(){
+
+  if(!realEpisodeData || !realEpisodeData.episode){
+    return null;
+  }
+
+  const current = realEpisodeData.episode;
+
+  if(!window.allEpisodes || !Array.isArray(window.allEpisodes)){
+    return null;
+  }
+
+  const sorted = [...window.allEpisodes].sort((a,b)=>{
+
+    if(a.season_number !== b.season_number){
+      return a.season_number - b.season_number;
+    }
+
+    return a.episode_number - b.episode_number;
+  });
+
+  const idx = sorted.findIndex(e=>e.id === current.id);
+
+  if(idx === -1){
+    return null;
+  }
+
+  return sorted[idx + 1] || null;
+}
+
+function showAutoNextOverlay(nextEpisode){
+
+  const old = document.getElementById("autoNextOverlay");
+
+  if(old){
+    old.remove();
+  }
+
+  let seconds = 10;
+
+  const overlay = document.createElement("div");
+  overlay.id = "autoNextOverlay";
+
+  overlay.style.cssText = `
+    position:fixed;
+    right:15px;
+    bottom:90px;
+    width:320px;
+    background:#050816;
+    border:2px solid #7c3aed;
+    border-radius:20px;
+    padding:18px;
+    z-index:999999;
+    color:white;
+    box-shadow:0 0 40px rgba(124,58,237,.7);
+  `;
+
+  overlay.innerHTML = `
+    <div style="font-size:13px;color:#a78bfa;margin-bottom:8px">
+      ▶ Următorul episod
+    </div>
+
+    <div style="font-size:18px;font-weight:bold;margin-bottom:5px">
+      S${nextEpisode.season_number} E${nextEpisode.episode_number}
+    </div>
+
+    <div style="font-size:15px;margin-bottom:15px">
+      ${nextEpisode.title || 'Episod'}
+    </div>
+
+    <div style="margin-bottom:15px">
+      Rulează în
+      <span id="nextEpisodeCounter">10</span>s
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="playNextEpisodeBtn"
+        style="
+          flex:1;
+          border:none;
+          background:#7c3aed;
+          color:white;
+          padding:12px;
+          border-radius:12px;
+          font-weight:bold;
+        ">
+        ▶ Play
+      </button>
+
+      <button id="cancelNextEpisodeBtn"
+        style="
+          flex:1;
+          border:none;
+          background:#111827;
+          color:white;
+          padding:12px;
+          border-radius:12px;
+        ">
+        Anulează
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const interval = setInterval(()=>{
+
+    seconds--;
+
+    const counter = document.getElementById("nextEpisodeCounter");
+
+    if(counter){
+      counter.innerText = seconds;
+    }
+
+    if(seconds <= 0){
+
+      clearInterval(interval);
+
+      overlay.remove();
+
+      playEpisode(nextEpisode.id);
+    }
+
+  },1000);
+
+  document.getElementById("playNextEpisodeBtn").onclick = ()=>{
+
+    clearInterval(interval);
+
+    overlay.remove();
+
+    playEpisode(nextEpisode.id);
+  };
+
+  document.getElementById("cancelNextEpisodeBtn").onclick = ()=>{
+
+    clearInterval(interval);
+
+    overlay.remove();
+  };
+}
+
+function markEpisodeCompletedAndNext(){
+
+  if(!realEpisodeData || !realEpisodeData.episode){
+    alert("Nu există episod activ");
+    return;
+  }
+
+  const ep = realEpisodeData.episode;
+
+  fetch("/watch-progress",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      user_id:user?.id || 1,
+      content_id:ep.content_id,
+      episode_id:ep.id,
+      progress_seconds:ep.duration_seconds || 1400,
+      duration_seconds:ep.duration_seconds || 1400,
+      completed:true
+    })
+  })
+  .then(r=>r.json())
+  .then(()=>{
+
+    const next = getNextEpisode();
+
+    if(!next){
+      alert("Serial terminat");
+      return;
+    }
+
+    showAutoNextOverlay(next);
+
+  })
+  .catch(err=>{
+    console.error(err);
+    alert("Eroare auto next");
+  });
+}
+
+function addAutoNextButton(){
+
+  const topbar = document.querySelector(".player-topbar");
+
+  if(!topbar){
+    return;
+  }
+
+  if(document.getElementById("finishEpisodeBtn")){
+    return;
+  }
+
+  const btn = document.createElement("button");
+
+  btn.id = "finishEpisodeBtn";
+
+  btn.innerHTML = "📺 Final episod";
+
+  btn.style.cssText = `
+    border:none;
+    background:#dc2626;
+    color:white;
+    padding:8px 14px;
+    border-radius:10px;
+    font-weight:bold;
+    margin-left:8px;
+  `;
+
+  btn.onclick = ()=>{
+    markEpisodeCompletedAndNext();
+  };
+
+  topbar.appendChild(btn);
+}
+

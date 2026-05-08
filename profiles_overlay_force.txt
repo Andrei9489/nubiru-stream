@@ -1,0 +1,131 @@
+
+async function openProfilesOverlay(){
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles?user_id="+userId);
+  const profiles = await res.json();
+
+  const old = document.getElementById("profilesOverlay");
+  if(old) old.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "profilesOverlay";
+  overlay.style.cssText = `
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.92);
+    z-index:999999;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:white;
+  `;
+
+  overlay.innerHTML = `
+    <div style="text-align:center;width:95%;max-width:900px">
+      <h1>Cine vizionează?</h1>
+
+      <div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap">
+        ${profiles.map(p=>`
+          <div onclick="selectNetflixProfile(${p.id})" style="cursor:pointer">
+            <div style="
+              width:120px;
+              height:120px;
+              border-radius:24px;
+              background:#111827;
+              border:3px solid #7c3aed;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              font-size:54px;
+              margin-bottom:10px">
+              ${p.kid_mode ? "🧒" : "👤"}
+            </div>
+            <b>${p.name}</b>
+          </div>
+        `).join("")}
+
+        <div onclick="createNetflixProfile()" style="cursor:pointer">
+          <div style="
+            width:120px;
+            height:120px;
+            border-radius:24px;
+            background:#111;
+            border:3px dashed #777;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:54px;
+            margin-bottom:10px">
+            +
+          </div>
+          <b>Adaugă</b>
+        </div>
+      </div>
+
+      <button onclick="profilesOverlay.remove()" style="margin-top:30px">
+        Închide
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+
+async function selectNetflixProfile(profileId){
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles/select",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      profile_id:profileId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    localStorage.setItem("activeProfileId",data.profile.id);
+    localStorage.setItem("activeProfileName",data.profile.name);
+
+    document.getElementById("profilesOverlay")?.remove();
+
+    if(typeof forceHomepageRails==="function") forceHomepageRails();
+    if(typeof loadHomepageRails==="function") loadHomepageRails();
+    if(typeof loadHistory==="function") loadHistory();
+
+    alert("Profil selectat: "+data.profile.name);
+  }else{
+    alert(data.error || "Eroare profil");
+  }
+}
+
+async function createNetflixProfile(){
+  const name = prompt("Nume profil:");
+  if(!name) return;
+
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      name:name,
+      language:"ro",
+      kid_mode:false
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    openProfilesOverlay();
+  }else{
+    alert(data.error || "Eroare creare profil");
+  }
+}
+

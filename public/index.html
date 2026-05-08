@@ -654,7 +654,10 @@ function showMsg(msg,type="error"){
 
 function renderUser(){
   userBox.innerHTML=user
-    ? `<p class="small">Salut, ${user.name||user.email}</p><button onclick="logout()">Logout</button>`
+    ? `<p class="small">Salut, ${user.name||user.email}</p><button onclick="logout()">Logout</button>
+
+<button id="profileSwitchBtn" onclick="openProfilesOverlay()">👥 Schimbă profil</button>
+`
     : `<button onclick="openAuth()">Login / Register</button>`;
 }
 renderUser();
@@ -666,7 +669,7 @@ function openAuth(){
 
 
 async function loadHomepageRails(){
-  const userId = user?.id || 1;
+  const userId = getActiveUserId();
 
   try{
     const res = await fetch("/homepage?user_id="+userId);
@@ -983,6 +986,7 @@ async function playItem(item){
   playerFrame.src=toEmbed(url);
   player.style.display="block";
   startAutoSaveProgress();
+    startProfileProgressAutoSave();
   fetch("/content/"+item.id+"/view",{method:"POST"});
 }
 
@@ -1151,7 +1155,7 @@ async function loadWatchlist(){
 }
 
 async function loadHistory(){
-  const userId = user?.id || 1;
+  const userId = getActiveUserId();
   const res = await fetch("/continue-watching?user_id="+userId);
   const data = await res.json();
 
@@ -1215,7 +1219,7 @@ function stopAutoSaveProgress(){
 async function autoSaveProgressNow(){
   if(!currentItem || !playStartedAt) return;
 
-  const userId = user?.id || 1;
+  const userId = getActiveUserId();
   const watchedSeconds = Math.floor((Date.now() - playStartedAt) / 1000);
 
   await fetch("/watch-progress",{
@@ -1235,7 +1239,7 @@ async function autoSaveProgressNow(){
 async function saveProgress(){
   if(!currentItem)return;
 
-  const userId = user?.id || 1;
+  const userId = getActiveUserId();
 
   const res = await fetch("/watch-progress",{
     method:"POST",
@@ -1272,7 +1276,7 @@ function showSection(section){
 }
 
 async function forceHomepageRails(){
-  const userId = user?.id || 1;
+  const userId = getActiveUserId();
 
   try{
     const res = await fetch("/homepage?user_id="+userId);
@@ -1425,12 +1429,14 @@ function renderRealEpisodePlayer(){
   player.style.display = "block";
 
   renderEpisodeServerBar();
+  addAutoNextButton();
 
   fetch("/watch-progress",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      user_id:user?.id || 1,
+      user_id:getActiveUserId(),
+      profile_id:getActiveProfileId(),
       content_id:ep.content_id,
       episode_id:ep.id,
       progress_seconds:0,
@@ -1441,6 +1447,7 @@ function renderRealEpisodePlayer(){
 
   if(typeof startAutoSaveProgress === "function"){
     startAutoSaveProgress();
+    startProfileProgressAutoSave();
   }
 }
 
@@ -1496,6 +1503,611 @@ function playNextEpisode(){
 }
 
 
+
+
+
+let autoNextOverlay = null;
+let autoNextCountdown = null;
+let autoNextSeconds = 10;
+
+function getNextEpisode(){
+  if(!currentSeriesData || !realEpisodeData) return null;
+
+  const all = currentSeriesData.episodes || [];
+  const currentId = realEpisodeData.episode.id;
+  const index = all.findIndex(e=>e.id === currentId);
+
+  return all[index + 1] || null;
+}
+
+function showAutoNextOverlay(){
+  const next = getNextEpisode();
+
+  if(!next){
+    alert("Ai terminat ultimul episod.");
+    return;
+  }
+
+  hideAutoNextOverlay();
+
+  autoNextSeconds = 10;
+
+  autoNextOverlay = document.createElement("div");
+  autoNextOverlay.id = "autoNextOverlay";
+  autoNextOverlay.style.cssText = `
+    position:fixed;
+    right:20px;
+    bottom:80px;
+    z-index:999999;
+    width:320px;
+    background:#050712;
+    border:1px solid #7c3aed;
+    border-radius:20px;
+    padding:18px;
+    color:white;
+    box-shadow:0 0 35px rgba(124,58,237,.5);
+  `;
+
+  autoNextOverlay.innerHTML = `
+    <b>Următorul episod</b>
+    <p style="margin:8px 0;color:#c4b5fd">
+      S${next.season_number} E${next.episode_number} - ${next.title}
+    </p>
+    <p class="small">Pornește în <span id="autoNextCounter">10</span>s</p>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmAutoNext()">▶ Play now</button>
+      <button onclick="hideAutoNextOverlay()">Anulează</button>
+    </div>
+  `;
+
+  document.body.appendChild(autoNextOverlay);
+
+  autoNextCountdown = setInterval(()=>{
+    autoNextSeconds--;
+    const c = document.getElementById("autoNextCounter");
+    if(c) c.innerText = autoNextSeconds;
+
+    if(autoNextSeconds <= 0){
+      confirmAutoNext();
+    }
+  },1000);
+}
+
+function hideAutoNextOverlay(){
+  if(autoNextCountdown){
+    clearInterval(autoNextCountdown);
+    autoNextCountdown = null;
+  }
+
+  const el = document.getElementById("autoNextOverlay");
+  if(el) el.remove();
+
+  autoNextOverlay = null;
+}
+
+function confirmAutoNext(){
+  const next = getNextEpisode();
+  hideAutoNextOverlay();
+
+  if(next){
+    playEpisode(next.id);
+  }
+}
+
+
+function markEpisodeCompletedAndNext(){
+
+  if(!realEpisodeData){
+    alert("Nu există episod activ");
+    return;
+  }
+
+  const ep = realEpisodeData.episode;
+
+  fetch("/watch-progress",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      user_id:getActiveUserId(),
+      profile_id:getActiveProfileId(),
+      content_id:ep.content_id,
+      episode_id:ep.id,
+      progress_seconds:ep.duration_seconds || 1440,
+      duration_seconds:ep.duration_seconds || 1440,
+      completed:true
+    })
+  })
+  .then(r=>r.json())
+  .then(()=>{
+
+    const next = getNextEpisode();
+
+    if(!next){
+      alert("Serial terminat.");
+      return;
+    }
+
+    let sec = 10;
+
+    const old = document.getElementById("autoNextOverlay");
+    if(old) old.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "autoNextOverlay";
+
+    overlay.style.cssText = `
+      position:fixed;
+      right:20px;
+      bottom:80px;
+      width:320px;
+      background:#050712;
+      border:2px solid #7c3aed;
+      border-radius:20px;
+      padding:20px;
+      z-index:999999;
+      color:white;
+      box-shadow:0 0 40px rgba(124,58,237,.6);
+    `;
+
+    overlay.innerHTML = `
+      <h3 style="margin:0 0 10px 0">▶ Următorul episod</h3>
+
+      <div style="font-size:14px;color:#c4b5fd;margin-bottom:12px">
+        S${next.season_number} E${next.episode_number}
+      </div>
+
+      <div style="font-weight:bold;margin-bottom:12px">
+        ${next.title}
+      </div>
+
+      <div style="margin-bottom:15px">
+        Rulează în <span id="nextEpCounter">10</span>s
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button id="playNextNow">▶ Play now</button>
+        <button id="cancelNextEp">Anulează</button>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const interval = setInterval(()=>{
+
+      sec--;
+
+      const c = document.getElementById("nextEpCounter");
+
+      if(c){
+        c.innerText = sec;
+      }
+
+      if(sec <= 0){
+        clearInterval(interval);
+        overlay.remove();
+        playEpisode(next.id);
+      }
+
+    },1000);
+
+    document.getElementById("playNextNow").onclick = ()=>{
+      clearInterval(interval);
+      overlay.remove();
+      playEpisode(next.id);
+    };
+
+    document.getElementById("cancelNextEp").onclick = ()=>{
+      clearInterval(interval);
+      overlay.remove();
+    };
+
+  })
+  .catch(err=>{
+    console.error(err);
+    alert("Eroare auto next");
+  });
+
+}
+
+
+function addAutoNextButton(){
+  let bar = document.getElementById("episodeServerBar");
+  if(!bar) return;
+
+  if(!document.getElementById("autoNextTestBtn")){
+    const btn = document.createElement("button");
+    btn.id = "autoNextTestBtn";
+    btn.innerText = "✅ Final episod";
+    btn.style.cssText = "background:#ef4444;color:white;border:0;border-radius:12px;padding:8px 12px;font-weight:bold";
+    btn.onclick = markEpisodeCompletedAndNext;
+    bar.appendChild(btn);
+  }
+}
+
+
+
+let activeProfile = null;
+
+async function loadProfiles(){
+  const userId = getActiveUserId();
+
+  const res = await fetch("/profiles?user_id="+userId);
+  const profiles = await res.json();
+
+  let box = document.getElementById("profileBar");
+
+  if(!box){
+    box = document.createElement("div");
+    box.id = "profileBar";
+    box.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0";
+    document.querySelector("nav")?.after(box);
+  }
+
+  box.innerHTML = `
+    <b>Profil:</b>
+    ${profiles.map(p=>`
+      <button onclick="selectProfile(${p.id})">
+        ${p.kid_mode ? "🧒" : "👤"} ${p.name}
+      </button>
+    `).join("")}
+    <button onclick="openCreateProfile()">➕ Profil</button>
+  `;
+
+  if(!activeProfile && profiles[0]){
+    activeProfile = profiles[0];
+    localStorage.setItem("activeProfileId", activeProfile.id);
+  }
+}
+
+async function selectProfile(profileId){
+  const userId = getActiveUserId();
+
+  const res = await fetch("/profiles/select",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      profile_id:profileId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    activeProfile = data.profile;
+    localStorage.setItem("activeProfileId", activeProfile.id);
+    alert("Profil selectat: "+activeProfile.name);
+
+    if(typeof loadHomepageRails === "function") loadHomepageRails();
+    if(typeof forceHomepageRails === "function") forceHomepageRails();
+    if(typeof loadHistory === "function") loadHistory();
+  }else{
+    alert(data.error || "Eroare profil");
+  }
+}
+
+function openCreateProfile(){
+  const name = prompt("Nume profil:");
+  if(!name) return;
+
+  createProfile(name);
+}
+
+async function createProfile(name){
+  const userId = getActiveUserId();
+
+  const res = await fetch("/profiles",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      name:name,
+      language:"ro",
+      kid_mode:false
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    activeProfile = data.profile;
+    localStorage.setItem("activeProfileId", activeProfile.id);
+    await loadProfiles();
+    alert("Profil creat: "+name);
+  }else{
+    alert(data.error || "Eroare creare profil");
+  }
+}
+
+function getActiveUserId(){
+  return user?.id || 1;
+}
+
+function getActiveProfileId(){
+  return activeProfile?.id || localStorage.getItem("activeProfileId") || 1;
+}
+
+setTimeout(loadProfiles, 700);
+setTimeout(loadProfiles, 2000);
+
+
+
+function detectLoggedUser(){
+  try{
+    return user ||
+      JSON.parse(localStorage.getItem("nubiru_user") || "null") ||
+      JSON.parse(localStorage.getItem("user") || "null") ||
+      JSON.parse(localStorage.getItem("currentUser") || "null") ||
+      {id:1};
+  }catch(e){
+    return {id:1};
+  }
+}
+
+function addProfileSwitchButton(){
+  const side = document.querySelector(".sidebar") || document.querySelector("aside") || document.body;
+  if(document.getElementById("profileSwitchBtn")) return;
+
+  const btn = document.createElement("button");
+  btn.id = "profileSwitchBtn";
+  btn.innerText = "👥 Schimbă profil";
+  btn.style.cssText = "width:100%;margin:8px 0;background:#7c3aed;color:white;border:0;border-radius:10px;padding:10px;font-weight:bold";
+  btn.onclick = openProfilesOverlay;
+
+  side.appendChild(btn);
+}
+
+setTimeout(addProfileSwitchButton, 1000);
+setTimeout(addProfileSwitchButton, 2500);
+
+setTimeout(()=>{
+  const u = detectLoggedUser();
+  if(u && !localStorage.getItem("activeProfileId")){
+    openProfilesOverlay();
+  }
+},1800);
+
+
+async function openProfilesOverlay(){
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles?user_id="+userId);
+  const profiles = await res.json();
+
+  const old = document.getElementById("profilesOverlay");
+  if(old) old.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "profilesOverlay";
+  overlay.style.cssText = `
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.92);
+    z-index:999999;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:white;
+  `;
+
+  overlay.innerHTML = `
+    <div style="text-align:center;width:95%;max-width:900px">
+      <h1>Cine vizionează?</h1>
+
+      <div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap">
+        ${profiles.map(p=>`
+          <div onclick="selectNetflixProfile(${p.id})" style="cursor:pointer">
+            <div style="
+              width:120px;
+              height:120px;
+              border-radius:24px;
+              background:#111827;
+              border:3px solid #7c3aed;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              font-size:54px;
+              margin-bottom:10px">
+              ${p.kid_mode ? "🧒" : "👤"}
+            </div>
+            <b>${p.name}</b>
+          </div>
+        `).join("")}
+
+        <div onclick="createNetflixProfile()" style="cursor:pointer">
+          <div style="
+            width:120px;
+            height:120px;
+            border-radius:24px;
+            background:#111;
+            border:3px dashed #777;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:54px;
+            margin-bottom:10px">
+            +
+          </div>
+          <b>Adaugă</b>
+        </div>
+      </div>
+
+      <button onclick="profilesOverlay.remove()" style="margin-top:30px">
+        Închide
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+
+async function selectNetflixProfile(profileId){
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles/select",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      profile_id:profileId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    localStorage.setItem("activeProfileId",data.profile.id);
+    localStorage.setItem("activeProfileName",data.profile.name);
+
+    document.getElementById("profilesOverlay")?.remove();
+
+    if(typeof forceHomepageRails==="function") forceHomepageRails();
+    if(typeof loadHomepageRails==="function") loadHomepageRails();
+    if(typeof loadHistory==="function") loadHistory();
+
+    alert("Profil selectat: "+data.profile.name);
+  }else{
+    alert(data.error || "Eroare profil");
+  }
+}
+
+async function createNetflixProfile(){
+  const name = prompt("Nume profil:");
+  if(!name) return;
+
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      name:name,
+      language:"ro",
+      kid_mode:false
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    openProfilesOverlay();
+  }else{
+    alert(data.error || "Eroare creare profil");
+  }
+}
+
+
+
+async function saveProfileProgressNow(){
+  try{
+    const profileId = localStorage.getItem("activeProfileId") || 1;
+
+    if(!profileId || !currentItem) return;
+
+    const episodeId = currentItem.episode_id || null;
+    const season = realEpisodeData?.episode?.season_number || 1;
+    const episode = realEpisodeData?.episode?.episode_number || 1;
+    const duration = realEpisodeData?.episode?.duration_seconds || 1440;
+
+    const watchedSeconds = playStartedAt
+      ? Math.floor((Date.now() - playStartedAt) / 1000)
+      : 0;
+
+    await fetch("/profile-progress",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        profile_id:Number(profileId),
+        content_id:currentItem.id,
+        season,
+        episode,
+        progress_seconds:Math.max(30, watchedSeconds),
+        duration_seconds:duration
+      })
+    });
+  }catch(e){
+    console.log("profile progress save error", e);
+  }
+}
+
+function startProfileProgressAutoSave(){
+  if(window.profileProgressTimer){
+    clearInterval(window.profileProgressTimer);
+  }
+
+  window.profileProgressTimer = setInterval(()=>{
+    saveProfileProgressNow();
+  },15000);
+}
+
+function stopProfileProgressAutoSave(){
+  if(window.profileProgressTimer){
+    clearInterval(window.profileProgressTimer);
+    window.profileProgressTimer = null;
+  }
+}
+
+async function loadProfileContinueWatching(){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+  const res = await fetch("/profile-progress/"+profileId);
+  const data = await res.json();
+
+  const box = document.getElementById("homeContinue");
+  if(!box) return;
+
+  if(!data.length){
+    box.innerHTML = "<span class='small'>Nimic disponibil.</span>";
+    return;
+  }
+
+  box.innerHTML = data.map(x=>{
+    const percent = x.duration_seconds
+      ? Math.round((x.progress_seconds / x.duration_seconds) * 100)
+      : 0;
+
+    return `
+      <div class="card" onclick="resumeProfileProgress(${x.content_id},${x.season},${x.episode})">
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div class="cardInfo">
+          <b>${x.title}</b><br>
+          <span class="small">S${x.season} E${x.episode}</span><br>
+          <span class="small">Progres: ${percent}%</span>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${percent}%"></div>
+          </div>
+          <button onclick="event.stopPropagation();resumeProfileProgress(${x.content_id},${x.season},${x.episode})">
+            Resume
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function resumeProfileProgress(contentId, season, episode){
+  const res = await fetch("/series-player/"+contentId);
+  const data = await res.json();
+
+  const ep = (data.episodes || []).find(e =>
+    Number(e.season_number) === Number(season) &&
+    Number(e.episode_number) === Number(episode)
+  );
+
+  if(ep){
+    currentSeriesData = data;
+    await playEpisode(ep.id);
+  }else{
+    const item = items.find(x=>x.id === contentId);
+    if(item) playItem(item);
+  }
+}
+
+setTimeout(loadProfileContinueWatching,1000);
+setTimeout(loadProfileContinueWatching,2500);
 
 
 </script>

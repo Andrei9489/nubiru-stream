@@ -2480,6 +2480,223 @@ app.get("/episode-play/:episodeId", async (req, res) => {
   }
 });
 
+/* PROFILES SERVER PRO */
+
+app.get("/profiles", async (req, res) => {
+  try {
+    const userId = req.query.user_id || 1;
+
+    const result = await pool.query(
+      `SELECT *
+       FROM user_profiles
+       WHERE user_id=$1
+       ORDER BY id ASC`,
+      [userId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Profiles error", details: err.message });
+  }
+});
+
+app.post("/profiles", async (req, res) => {
+  try {
+    const {
+      user_id = 1,
+      name,
+      avatar_url = "",
+      kid_mode = false,
+      language = "ro"
+    } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: "Profile name required" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO user_profiles
+       (user_id, name, avatar_url, kid_mode, language, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
+       RETURNING *`,
+      [user_id, name, avatar_url, kid_mode, language]
+    );
+
+    res.json({ ok: true, profile: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: "Create profile error", details: err.message });
+  }
+});
+
+app.put("/profiles/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const {
+      name,
+      avatar_url,
+      kid_mode,
+      language
+    } = req.body;
+
+    const result = await pool.query(
+      `UPDATE user_profiles
+       SET
+         name=COALESCE($1,name),
+         avatar_url=COALESCE($2,avatar_url),
+         kid_mode=COALESCE($3,kid_mode),
+         language=COALESCE($4,language),
+         updated_at=NOW()
+       WHERE id=$5
+       RETURNING *`,
+      [name, avatar_url, kid_mode, language, id]
+    );
+
+    res.json({ ok: true, profile: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: "Update profile error", details: err.message });
+  }
+});
+
+app.delete("/profiles/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    await pool.query(
+      `DELETE FROM user_profiles WHERE id=$1`,
+      [id]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Delete profile error", details: err.message });
+  }
+});
+
+app.post("/profiles/select", async (req, res) => {
+  try {
+    const { user_id = 1, profile_id } = req.body;
+
+    if (!profile_id) {
+      return res.status(400).json({ error: "profile_id required" });
+    }
+
+    const profileResult = await pool.query(
+      `SELECT * FROM user_profiles
+       WHERE id=$1 AND user_id=$2`,
+      [profile_id, user_id]
+    );
+
+    if (!profileResult.rows[0]) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    await pool.query(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ($1,$2,NOW())
+       ON CONFLICT (key)
+       DO UPDATE SET value=$2, updated_at=NOW()`,
+      [`selected_profile_${user_id}`, String(profile_id)]
+    );
+
+    res.json({ ok: true, profile: profileResult.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: "Select profile error", details: err.message });
+  }
+});
+
+app.get("/profiles/selected/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const setting = await pool.query(
+      `SELECT value FROM app_settings
+       WHERE key=$1`,
+      [`selected_profile_${userId}`]
+    );
+
+    const profileId = setting.rows[0]?.value;
+
+    if (!profileId) {
+      return res.json({ profile: null });
+    }
+
+    const profile = await pool.query(
+      `SELECT * FROM user_profiles WHERE id=$1`,
+      [profileId]
+    );
+
+    res.json({ profile: profile.rows[0] || null });
+  } catch (err) {
+    res.status(500).json({ error: "Selected profile error", details: err.message });
+  }
+});
+
+/* PROFILE CONTINUE WATCHING PRO */
+
+app.post("/profile-progress", async (req,res)=>{
+  try{
+    const {
+      profile_id,
+      content_id,
+      season,
+      episode,
+      progress_seconds,
+      duration_seconds
+    } = req.body;
+
+    if(!profile_id || !content_id){
+      return res.status(400).json({error:"profile_id and content_id required"});
+    }
+
+    const existing = await pool.query(
+      `SELECT id FROM profile_continue_watching
+       WHERE profile_id=$1 AND content_id=$2`,
+      [profile_id, content_id]
+    );
+
+    if(existing.rows.length){
+      await pool.query(
+        `UPDATE profile_continue_watching
+         SET season=$1,
+             episode=$2,
+             progress_seconds=$3,
+             duration_seconds=$4,
+             updated_at=NOW()
+         WHERE id=$5`,
+        [season || 1, episode || 1, progress_seconds || 0, duration_seconds || 0, existing.rows[0].id]
+      );
+    }else{
+      await pool.query(
+        `INSERT INTO profile_continue_watching
+         (profile_id, content_id, season, episode, progress_seconds, duration_seconds)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [profile_id, content_id, season || 1, episode || 1, progress_seconds || 0, duration_seconds || 0]
+      );
+    }
+
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({error:"progress error", details:e.message});
+  }
+});
+
+app.get("/profile-progress/:profileId", async (req,res)=>{
+  try{
+    const q = await pool.query(
+      `SELECT p.*, c.title, c.poster_url, c.backdrop_url, c.type, c.category, c.year
+       FROM profile_continue_watching p
+       JOIN contents c ON c.id=p.content_id
+       WHERE p.profile_id=$1
+       ORDER BY p.updated_at DESC`,
+      [req.params.profileId]
+    );
+
+    res.json(q.rows);
+  }catch(e){
+    res.status(500).json({error:"progress fetch error", details:e.message});
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });

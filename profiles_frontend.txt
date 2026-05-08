@@ -1,0 +1,105 @@
+
+let activeProfile = null;
+
+async function loadProfiles(){
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles?user_id="+userId);
+  const profiles = await res.json();
+
+  let box = document.getElementById("profileBar");
+
+  if(!box){
+    box = document.createElement("div");
+    box.id = "profileBar";
+    box.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0";
+    document.querySelector("nav")?.after(box);
+  }
+
+  box.innerHTML = `
+    <b>Profil:</b>
+    ${profiles.map(p=>`
+      <button onclick="selectProfile(${p.id})">
+        ${p.kid_mode ? "🧒" : "👤"} ${p.name}
+      </button>
+    `).join("")}
+    <button onclick="openCreateProfile()">➕ Profil</button>
+  `;
+
+  if(!activeProfile && profiles[0]){
+    activeProfile = profiles[0];
+    localStorage.setItem("activeProfileId", activeProfile.id);
+  }
+}
+
+async function selectProfile(profileId){
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles/select",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      profile_id:profileId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    activeProfile = data.profile;
+    localStorage.setItem("activeProfileId", activeProfile.id);
+    alert("Profil selectat: "+activeProfile.name);
+
+    if(typeof loadHomepageRails === "function") loadHomepageRails();
+    if(typeof forceHomepageRails === "function") forceHomepageRails();
+    if(typeof loadHistory === "function") loadHistory();
+  }else{
+    alert(data.error || "Eroare profil");
+  }
+}
+
+function openCreateProfile(){
+  const name = prompt("Nume profil:");
+  if(!name) return;
+
+  createProfile(name);
+}
+
+async function createProfile(name){
+  const userId = user?.id || 1;
+
+  const res = await fetch("/profiles",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      user_id:userId,
+      name:name,
+      language:"ro",
+      kid_mode:false
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    activeProfile = data.profile;
+    localStorage.setItem("activeProfileId", activeProfile.id);
+    await loadProfiles();
+    alert("Profil creat: "+name);
+  }else{
+    alert(data.error || "Eroare creare profil");
+  }
+}
+
+function getActiveUserId(){
+  return user?.id || 1;
+}
+
+function getActiveProfileId(){
+  return activeProfile?.id || localStorage.getItem("activeProfileId") || 1;
+}
+
+setTimeout(loadProfiles, 700);
+setTimeout(loadProfiles, 2000);
+
