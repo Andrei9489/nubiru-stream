@@ -2193,6 +2193,98 @@ app.get("/resume/:contentId", async (req, res) => {
   }
 });
 
+/* AI NETFLIX HOMEPAGE RAILS */
+app.get("/homepage", async (req, res) => {
+  try {
+    const userId = req.query.user_id || null;
+
+    const continueWatching = await pool.query(
+      `SELECT
+        h.*,
+        c.title,
+        c.poster_url,
+        c.backdrop_url,
+        c.type,
+        c.category,
+        c.year,
+        CASE
+          WHEN h.duration_seconds > 0
+          THEN ROUND((h.progress_seconds::numeric / h.duration_seconds::numeric) * 100)
+          ELSE 0
+        END AS percent
+       FROM watch_history h
+       JOIN contents c ON c.id = h.content_id
+       WHERE ($1::int IS NULL OR h.user_id=$1)
+         AND COALESCE(h.completed,false)=false
+       ORDER BY h.updated_at DESC
+       LIMIT 20`,
+      [userId]
+    );
+
+    const trending = await pool.query(
+      `SELECT *
+       FROM contents
+       ORDER BY COALESCE(popularity,0) DESC, COALESCE(views,0) DESC, created_at DESC
+       LIMIT 30`
+    );
+
+    const featured = await pool.query(
+      `SELECT *
+       FROM contents
+       WHERE is_featured=true OR is_trending=true
+       ORDER BY is_featured DESC, is_trending DESC, created_at DESC
+       LIMIT 30`
+    );
+
+    const movies = await pool.query(
+      `SELECT *
+       FROM contents
+       WHERE type='movie' OR category ILIKE '%film%'
+       ORDER BY created_at DESC
+       LIMIT 30`
+    );
+
+    const series = await pool.query(
+      `SELECT *
+       FROM contents
+       WHERE type='series' OR category ILIKE '%serial%'
+       ORDER BY created_at DESC
+       LIMIT 30`
+    );
+
+    const aiPicks = await pool.query(
+      `SELECT c.*, s.quality_score, s.recommendation_score, s.notes
+       FROM contents c
+       LEFT JOIN ai_scores s ON s.content_id=c.id
+       ORDER BY COALESCE(s.recommendation_score,0) DESC,
+                COALESCE(s.quality_score,0) DESC,
+                COALESCE(c.popularity,0) DESC
+       LIMIT 30`
+    );
+
+    const semantic = await pool.query(
+      `SELECT c.*, e.ai_score, e.emotions, e.keywords
+       FROM contents c
+       JOIN ai_embeddings e ON e.content_id=c.id
+       WHERE e.embedding_type='semantic'
+       ORDER BY e.ai_score DESC, c.created_at DESC
+       LIMIT 30`
+    );
+
+    res.json({
+      continueWatching: continueWatching.rows,
+      trending: trending.rows,
+      featured: featured.rows,
+      movies: movies.rows,
+      series: series.rows,
+      aiPicks: aiPicks.rows,
+      semantic: semantic.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Homepage rails error", details: err.message });
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });
