@@ -347,6 +347,120 @@ button{
   }
 }
 </style>
+
+<style id="nubiru-premium-rails">
+.rail{
+  display:flex;
+  gap:16px;
+  overflow-x:auto;
+  padding:10px 0 22px;
+  scroll-behavior:smooth;
+}
+.rail::-webkit-scrollbar{
+  height:6px;
+}
+.rail::-webkit-scrollbar-thumb{
+  background:#6d28d9;
+  border-radius:10px;
+}
+.card{
+  min-width:180px;
+  width:180px;
+  background:#111827;
+  border-radius:18px;
+  overflow:hidden;
+  transition:.25s;
+  position:relative;
+  box-shadow:0 0 20px rgba(0,0,0,.45);
+}
+.card:hover{
+  transform:scale(1.06);
+  z-index:20;
+}
+.card img{
+  width:100%;
+  height:260px;
+  object-fit:cover;
+  background:#222;
+}
+.progress-bar{
+  width:100%;
+  height:6px;
+  background:#374151;
+  border-radius:20px;
+  overflow:hidden;
+  margin-top:8px;
+}
+.progress-fill{
+  height:100%;
+  background:#8b5cf6;
+}
+.top-badge{
+  position:absolute;
+  top:10px;
+  left:10px;
+  background:#ef4444;
+  color:white;
+  font-weight:bold;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:12px;
+  z-index:5;
+}
+.cardInfo button{
+  margin-top:6px;
+}
+</style>
+
+
+<style id="nubiru-cinematic-rails">
+.rail{
+  display:flex !important;
+  gap:14px;
+  overflow-x:auto;
+  padding:10px 4px 18px;
+  scroll-behavior:smooth;
+}
+.rail::-webkit-scrollbar{height:6px}
+.rail::-webkit-scrollbar-thumb{
+  background:#7c3aed;
+  border-radius:20px;
+}
+.card{
+  min-width:160px !important;
+  max-width:160px !important;
+  background:#111827;
+  border-radius:18px;
+  overflow:hidden;
+  transition:.25s;
+  box-shadow:0 0 20px rgba(124,58,237,.25);
+}
+.card:hover{
+  transform:scale(1.05);
+}
+.card img{
+  width:100%;
+  height:240px;
+  object-fit:cover;
+  background:#111827;
+}
+.cardInfo{
+  padding:10px;
+}
+.progress-bar{
+  width:100%;
+  height:6px;
+  background:#1f2937;
+  border-radius:20px;
+  overflow:hidden;
+  margin-top:6px;
+}
+.progress-fill{
+  height:100%;
+  background:#7c3aed;
+}
+</style>
+
 </head>
 
 <body>
@@ -386,8 +500,20 @@ button{
   </section>
 
   <section class="section" id="homeSection">
-    <h2>Catalog</h2>
-    <div class="rail" id="catalog"></div>
+    <h2>Continue Watching</h2>
+<div class="rail" id="homeContinue"></div>
+<h2>Trending</h2>
+<div class="rail" id="homeTrending"></div>
+<h2>AI Picks</h2>
+<div class="rail" id="homeAiPicks"></div>
+<h2>Semantic AI</h2>
+<div class="rail" id="homeSemantic"></div>
+<h2>Filme</h2>
+<div class="rail" id="homeMovies"></div>
+<h2>Seriale</h2>
+<div class="rail" id="homeSeries"></div>
+<h2>Catalog</h2>
+<div class="rail" id="catalog"></div>
   </section>
 
   <section class="section" id="watchlistSection" style="display:none">
@@ -503,12 +629,14 @@ function renderRail(id,data,isContinue=false){
   const box = document.getElementById(id);
   if(!box) return;
 
-  if(!data.length){
-    box.innerHTML = "<span class='small'>Nimic momentan.</span>";
+  const list = data || [];
+
+  if(!list.length){
+    box.innerHTML = "<span class='small'>Nimic disponibil.</span>";
     return;
   }
 
-  box.innerHTML = data.map(x=>{
+  box.innerHTML = list.map(x=>{
     if(isContinue){
       return `
       <div class="card" onclick='resumeContent(${JSON.stringify(x)})'>
@@ -516,8 +644,8 @@ function renderRail(id,data,isContinue=false){
         <div class="cardInfo">
           <b>${x.title}</b><br>
           <span class="small">Progres: ${x.percent || 0}%</span>
-          <div style="height:6px;background:#374151;border-radius:8px;margin-top:6px">
-            <div style="height:6px;background:#8b5cf6;border-radius:8px;width:${x.percent || 0}%"></div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${x.percent || 0}%"></div>
           </div>
           <button onclick='event.stopPropagation();resumeContent(${JSON.stringify(x)})'>Resume</button>
         </div>
@@ -1036,6 +1164,58 @@ function showSection(section){
   if(section==="history")loadHistory();
   if(section==="recommendations")loadRecommendations();
 }
+
+async function forceHomepageRails(){
+  const userId = user?.id || 1;
+
+  try{
+    const res = await fetch("/homepage?user_id="+userId);
+    const data = await res.json();
+
+    forceRenderRail("homeContinue", data.continueWatching || [], true);
+    forceRenderRail("homeTrending", data.trending || []);
+    forceRenderRail("homeAiPicks", data.aiPicks || []);
+    forceRenderRail("homeSemantic", data.semantic || []);
+    forceRenderRail("homeMovies", data.movies || []);
+    forceRenderRail("homeSeries", data.series || []);
+  }catch(e){
+    console.log("force homepage rails error", e);
+  }
+}
+
+function forceRenderRail(id, list, isContinue=false){
+  const box = document.getElementById(id);
+  if(!box) return;
+
+  if(!list || !list.length){
+    box.innerHTML = "<span class='small'>Nimic disponibil.</span>";
+    return;
+  }
+
+  box.innerHTML = list.map(x=>{
+    if(isContinue){
+      return `
+      <div class="card" onclick='resumeContent(${JSON.stringify(x)})'>
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div class="cardInfo">
+          <b>${x.title}</b><br>
+          <span class="small">Progres: ${x.percent || 0}%</span>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${x.percent || 0}%"></div>
+          </div>
+          <button onclick='event.stopPropagation();resumeContent(${JSON.stringify(x)})'>Resume</button>
+        </div>
+      </div>`;
+    }
+
+    return card(x);
+  }).join("");
+}
+
+setTimeout(forceHomepageRails, 800);
+setTimeout(forceHomepageRails, 2000);
+
+
 </script>
 
 <div class="modal" id="sourcePickerModal">
