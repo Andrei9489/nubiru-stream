@@ -1,0 +1,81 @@
+
+async function runSemanticSearch(){
+  const q =
+    document.getElementById("searchInput")?.value ||
+    document.getElementById("q")?.value ||
+    "";
+
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  if(!q.trim()){
+    if(typeof forceHomepageRails === "function"){
+      forceHomepageRails();
+    }
+    return;
+  }
+
+  const res = await fetch(
+    "/ai/search?q="+encodeURIComponent(q)+"&profile_id="+profileId
+  );
+
+  const data = await res.json();
+
+  const main =
+    document.getElementById("catalog") ||
+    document.getElementById("homeTrending") ||
+    document.querySelector(".main");
+
+  if(!main) return;
+
+  main.innerHTML = `
+    <h2>🔎 AI Search: ${q}</h2>
+    <div class="rail">
+      ${data.length ? data.map(x=>`
+        <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+          <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+          <div class="cardInfo">
+            <b>${x.title}</b><br>
+            <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+            <span class="small">Semantic score: ${x.semantic_score}</span><br>
+            <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+            <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+            <button onclick='event.stopPropagation();addWatchlist(${x.id})'>❤️</button>
+          </div>
+        </div>
+      `).join("") : "<p>Nimic găsit semantic.</p>"}
+    </div>
+  `;
+}
+
+function installSemanticSearchHooks(){
+  const inputs = [
+    document.getElementById("searchInput"),
+    document.getElementById("q")
+  ].filter(Boolean);
+
+  for(const input of inputs){
+    if(input.dataset.semanticHooked) continue;
+    input.dataset.semanticHooked = "1";
+
+    input.addEventListener("keydown", e=>{
+      if(e.key === "Enter"){
+        runSemanticSearch();
+      }
+    });
+  }
+
+  const buttons = [...document.querySelectorAll("button")];
+
+  for(const btn of buttons){
+    if((btn.innerText || "").trim().toLowerCase() === "search"){
+      if(btn.dataset.semanticHooked) continue;
+      btn.dataset.semanticHooked = "1";
+      btn.onclick = runSemanticSearch;
+    }
+  }
+}
+
+setTimeout(installSemanticSearchHooks,800);
+setTimeout(installSemanticSearchHooks,2000);
+setTimeout(installSemanticSearchHooks,4000);
+

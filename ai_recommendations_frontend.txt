@@ -1,0 +1,51 @@
+
+async function loadAIRecommendations(){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/ai/recommendations/"+profileId);
+  const data = await res.json();
+
+  const box =
+    document.getElementById("forYouBox") ||
+    document.getElementById("homeAiPicks");
+
+  if(!box) return;
+
+  if(!data.length){
+    box.innerHTML = "<span class='small'>AI încă învață gusturile tale.</span>";
+    return;
+  }
+
+  box.innerHTML = data.map(x=>`
+    <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div class="cardInfo">
+        <b>${x.title}</b><br>
+        <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+        <span class="small">AI Score: ${x.ai_recommendation_score || 0}</span><br>
+        <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+        <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+        <button onclick='event.stopPropagation();addWatchlist(${x.id})'>❤️</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function sendAIProfileEvent(contentId,eventType="view",weight=1){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  fetch("/ai/profile-event",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId,
+      event_type:eventType,
+      weight
+    })
+  }).catch(()=>{});
+}
+
+setTimeout(loadAIRecommendations,1000);
+setTimeout(loadAIRecommendations,2500);
+

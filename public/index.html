@@ -970,6 +970,7 @@ function playPlayerSource(i){
 }
 
 async function playItem(item){
+  sendAIProfileEvent(item.id,"play",3);
   const source = await getSmartPlay(item);
   const url = source.url;
   const sources = source.sources || [];
@@ -1137,21 +1138,14 @@ function logout(){
   renderUser();
 }
 
-async function addWatchlist(id){
-  if(!token)return openAuth();
-  await fetch("/watchlist/"+id,{method:"POST",headers:authHeaders()});
-  alert("Adăugat în watchlist");
-}
+
 
 function addHeroWatchlist(){
   if(heroItem)addWatchlist(heroItem.id);
 }
 
 async function loadWatchlist(){
-  if(!token)return openAuth();
-  const res=await fetch("/watchlist",{headers:authHeaders()});
-  const data=await res.json();
-  watchlistBox.innerHTML=data.length?data.map(card).join(""):"Nu ai nimic în watchlist.";
+  return loadProfileWatchlist();
 }
 
 async function loadHistory(){
@@ -1967,6 +1961,7 @@ async function selectNetflixProfile(profileId){
     if(typeof forceHomepageRails==="function") forceHomepageRails();
     if(typeof loadHomepageRails==="function") loadHomepageRails();
     if(typeof loadHistory==="function") loadHistory();
+    if(typeof loadAIRecommendations==="function") loadAIRecommendations();
 
     alert("Profil selectat: "+data.profile.name);
   }else{
@@ -2108,6 +2103,215 @@ async function resumeProfileProgress(contentId, season, episode){
 
 setTimeout(loadProfileContinueWatching,1000);
 setTimeout(loadProfileContinueWatching,2500);
+
+
+
+async function addWatchlist(contentId){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/profile-watchlist",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    sendAIProfileEvent(contentId,"watchlist",5);
+    alert("Adăugat în Watchlist pentru profil.");
+  }else{
+    alert(data.error || "Eroare watchlist");
+  }
+}
+
+async function removeProfileWatchlist(contentId){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/profile-watchlist",{
+    method:"DELETE",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    loadProfileWatchlist();
+  }else{
+    alert(data.error || "Eroare ștergere watchlist");
+  }
+}
+
+async function loadProfileWatchlist(){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/profile-watchlist/"+profileId);
+  const data = await res.json();
+
+  if(!watchlistBox){
+    alert("watchlistBox lipsă");
+    return;
+  }
+
+  if(!data.length){
+    watchlistBox.innerHTML = "Watchlist gol pentru profilul curent.";
+    return;
+  }
+
+  watchlistBox.innerHTML = data.map(x=>`
+    <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div class="cardInfo">
+        <b>${x.title}</b><br>
+        <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+        <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+        <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+        <button onclick='event.stopPropagation();removeProfileWatchlist(${x.content_id})'>🗑️</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+
+
+async function loadAIRecommendations(){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/ai/recommendations/"+profileId);
+  const data = await res.json();
+
+  const box =
+    document.getElementById("forYouBox") ||
+    document.getElementById("homeAiPicks");
+
+  if(!box) return;
+
+  if(!data.length){
+    box.innerHTML = "<span class='small'>AI încă învață gusturile tale.</span>";
+    return;
+  }
+
+  box.innerHTML = data.map(x=>`
+    <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div class="cardInfo">
+        <b>${x.title}</b><br>
+        <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+        <span class="small">AI Score: ${x.ai_recommendation_score || 0}</span><br>
+        <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+        <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+        <button onclick='event.stopPropagation();addWatchlist(${x.id})'>❤️</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function sendAIProfileEvent(contentId,eventType="view",weight=1){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  fetch("/ai/profile-event",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId,
+      event_type:eventType,
+      weight
+    })
+  }).catch(()=>{});
+}
+
+setTimeout(loadAIRecommendations,1000);
+setTimeout(loadAIRecommendations,2500);
+
+
+
+async function runSemanticSearch(){
+  const q =
+    document.getElementById("searchInput")?.value ||
+    document.getElementById("q")?.value ||
+    "";
+
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  if(!q.trim()){
+    if(typeof forceHomepageRails === "function"){
+      forceHomepageRails();
+    }
+    return;
+  }
+
+  const res = await fetch(
+    "/ai/search?q="+encodeURIComponent(q)+"&profile_id="+profileId
+  );
+
+  const data = await res.json();
+
+  const main =
+    document.getElementById("catalog") ||
+    document.getElementById("homeTrending") ||
+    document.querySelector(".main");
+
+  if(!main) return;
+
+  main.innerHTML = `
+    <h2>🔎 AI Search: ${q}</h2>
+    <div class="rail">
+      ${data.length ? data.map(x=>`
+        <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+          <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+          <div class="cardInfo">
+            <b>${x.title}</b><br>
+            <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+            <span class="small">Semantic score: ${x.semantic_score}</span><br>
+            <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+            <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+            <button onclick='event.stopPropagation();addWatchlist(${x.id})'>❤️</button>
+          </div>
+        </div>
+      `).join("") : "<p>Nimic găsit semantic.</p>"}
+    </div>
+  `;
+}
+
+function installSemanticSearchHooks(){
+  const inputs = [
+    document.getElementById("searchInput"),
+    document.getElementById("q")
+  ].filter(Boolean);
+
+  for(const input of inputs){
+    if(input.dataset.semanticHooked) continue;
+    input.dataset.semanticHooked = "1";
+
+    input.addEventListener("keydown", e=>{
+      if(e.key === "Enter"){
+        runSemanticSearch();
+      }
+    });
+  }
+
+  const buttons = [...document.querySelectorAll("button")];
+
+  for(const btn of buttons){
+    if((btn.innerText || "").trim().toLowerCase() === "search"){
+      if(btn.dataset.semanticHooked) continue;
+      btn.dataset.semanticHooked = "1";
+      btn.onclick = runSemanticSearch;
+    }
+  }
+}
+
+setTimeout(installSemanticSearchHooks,800);
+setTimeout(installSemanticSearchHooks,2000);
+setTimeout(installSemanticSearchHooks,4000);
 
 
 </script>

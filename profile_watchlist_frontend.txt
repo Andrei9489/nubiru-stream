@@ -1,0 +1,73 @@
+
+async function addWatchlist(contentId){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/profile-watchlist",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    alert("Adăugat în Watchlist pentru profil.");
+  }else{
+    alert(data.error || "Eroare watchlist");
+  }
+}
+
+async function removeProfileWatchlist(contentId){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/profile-watchlist",{
+    method:"DELETE",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId
+    })
+  });
+
+  const data = await res.json();
+
+  if(data.ok){
+    loadProfileWatchlist();
+  }else{
+    alert(data.error || "Eroare ștergere watchlist");
+  }
+}
+
+async function loadProfileWatchlist(){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  const res = await fetch("/profile-watchlist/"+profileId);
+  const data = await res.json();
+
+  if(!watchlistBox){
+    alert("watchlistBox lipsă");
+    return;
+  }
+
+  if(!data.length){
+    watchlistBox.innerHTML = "Watchlist gol pentru profilul curent.";
+    return;
+  }
+
+  watchlistBox.innerHTML = data.map(x=>`
+    <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+      <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+      <div class="cardInfo">
+        <b>${x.title}</b><br>
+        <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+        <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+        <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+        <button onclick='event.stopPropagation();removeProfileWatchlist(${x.content_id})'>🗑️</button>
+      </div>
+    </div>
+  `).join("");
+}
+

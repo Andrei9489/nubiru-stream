@@ -1,0 +1,123 @@
+/* SEMANTIC SEARCH AI PRO */
+
+function normalizeSearchText(text){
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9ăâîșşțţ\s]/gi," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function semanticScoreContent(content, query){
+  const q = normalizeSearchText(query);
+  const words = q.split(" ").filter(w=>w.length > 2);
+
+  const hay = normalizeSearchText([
+    content.title,
+    content.description,
+    content.genre,
+    content.genres,
+    content.tags,
+    content.actors,
+    content.director,
+    content.category,
+    content.subcategory,
+    content.collection,
+    content.language,
+    content.country
+  ].filter(Boolean).join(" "));
+
+  let score = 0;
+
+  if(hay.includes(q)) score += 80;
+
+  for(const w of words){
+    if(hay.includes(w)) score += 12;
+    if(normalizeSearchText(content.title).includes(w)) score += 18;
+    if(normalizeSearchText(content.genres || content.genre).includes(w)) score += 15;
+    if(normalizeSearchText(content.tags).includes(w)) score += 14;
+  }
+
+  const intentMap = {
+    anime:["anime","animatie","animaţie","cartoon"],
+    dark:["dark","thriller","horror","mister","crime"],
+    fantasy:["fantasy","sf","sci fi","magie","magic","aventuri"],
+    action:["actiune","acțiune","action","aventuri"],
+    comedy:["comedie","comedy"],
+    kids:["kids","copii","family","familie","animatie","animaţie"],
+    avatar:["avatar","aang","fantasy","aventuri","sf"]
+  };
+
+  for(const intent in intentMap){
+    if(q.includes(intent)){
+      for(const term of intentMap[intent]){
+        if(hay.includes(normalizeSearchText(term))) score += 10;
+      }
+    }
+  }
+
+  score += Number(content.popularity || 0) * 0.4;
+  score += Number(content.views || 0) * 0.2;
+
+  return Math.round(score);
+}
+
+app.get("/ai/search", async (req,res)=>{
+  try{
+    const q = req.query.q || "";
+    const profileId = req.query.profile_id || null;
+
+    if(!q.trim()){
+      return res.json([]);
+    }
+
+    const result = await pool.query(
+      `SELECT *
+       FROM contents
+       ORDER BY id DESC
+       LIMIT 500`
+    );
+
+    let profileBoostWords = [];
+
+    if(profileId){
+      const taste = await pool.query(
+        `SELECT * FROM profile_ai_taste WHERE profile_id=$1`,
+        [profileId]
+      );
+
+      const t = taste.rows[0] || {};
+      profileBoostWords = [
+        ...(t.favorite_genres || "").split(","),
+        ...(t.favorite_keywords || "").split(","),
+        ...(t.favorite_actors || "").split(",")
+      ].map(x=>normalizeSearchText(x)).filter(x=>x.length > 2);
+    }
+
+    const scored = result.rows.map(c=>{
+      let score = semanticScoreContent(c,q);
+
+      const hay = normalizeSearchText([
+        c.title,c.description,c.genre,c.genres,c.tags,c.actors,c.category
+      ].filter(Boolean).join(" "));
+
+      for(const w of profileBoostWords){
+        if(hay.includes(w)) score += 3;
+      }
+
+      return {
+        ...c,
+        semantic_score:score
+      };
+    })
+    .filter(x=>x.semantic_score > 0)
+    .sort((a,b)=>b.semantic_score - a.semantic_score)
+    .slice(0,50);
+
+    res.json(scored);
+  }catch(e){
+    res.status(500).json({error:"semantic search error", details:e.message});
+  }
+});

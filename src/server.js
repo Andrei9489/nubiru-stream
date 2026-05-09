@@ -2697,6 +2697,304 @@ app.get("/profile-progress/:profileId", async (req,res)=>{
   }
 });
 
+/* PROFILE WATCHLIST PRO */
+
+app.post("/profile-watchlist", async (req,res)=>{
+  try{
+    const { profile_id, content_id } = req.body;
+
+    if(!profile_id || !content_id){
+      return res.status(400).json({error:"profile_id and content_id required"});
+    }
+
+    await pool.query(
+      `INSERT INTO profile_watchlist (profile_id, content_id)
+       VALUES ($1,$2)
+       ON CONFLICT (profile_id, content_id) DO NOTHING`,
+      [profile_id, content_id]
+    );
+
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({error:"profile watchlist add error", details:e.message});
+  }
+});
+
+app.delete("/profile-watchlist", async (req,res)=>{
+  try{
+    const { profile_id, content_id } = req.body;
+
+    await pool.query(
+      `DELETE FROM profile_watchlist
+       WHERE profile_id=$1 AND content_id=$2`,
+      [profile_id, content_id]
+    );
+
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({error:"profile watchlist delete error", details:e.message});
+  }
+});
+
+app.get("/profile-watchlist/:profileId", async (req,res)=>{
+  try{
+    const q = await pool.query(
+      `SELECT w.*, c.title, c.poster_url, c.backdrop_url, c.type, c.category, c.year, c.genres, c.genre
+       FROM profile_watchlist w
+       JOIN contents c ON c.id=w.content_id
+       WHERE w.profile_id=$1
+       ORDER BY w.created_at DESC`,
+      [req.params.profileId]
+    );
+
+    res.json(q.rows);
+  }catch(e){
+    res.status(500).json({error:"profile watchlist fetch error", details:e.message});
+  }
+});
+
+/* AI RECOMMENDATIONS PER PROFILE PRO */
+
+app.post("/ai/profile-event", async (req,res)=>{
+  try{
+    const {profile_id, content_id, event_type="view", weight=1} = req.body;
+
+    if(!profile_id || !content_id){
+      return res.status(400).json({error:"profile_id and content_id required"});
+    }
+
+    await pool.query(
+      `INSERT INTO profile_ai_events (profile_id, content_id, event_type, weight)
+       VALUES ($1,$2,$3,$4)`,
+      [profile_id, content_id, event_type, weight]
+    );
+
+    const c = await pool.query(
+      `SELECT genre, genres, tags, actors
+       FROM contents
+       WHERE id=$1`,
+      [content_id]
+    );
+
+    const item = c.rows[0] || {};
+    const textGenres = [item.genre,item.genres].filter(Boolean).join(",");
+    const textKeywords = [item.tags].filter(Boolean).join(",");
+    const textActors = [item.actors].filter(Boolean).join(",");
+
+    await pool.query(
+      `INSERT INTO profile_ai_taste
+       (profile_id, favorite_genres, favorite_keywords, favorite_actors, mood_profile, updated_at)
+       VALUES ($1,$2,$3,$4,$5,NOW())
+       ON CONFLICT (profile_id)
+       DO UPDATE SET
+         favorite_genres = CONCAT(profile_ai_taste.favorite_genres, ',', EXCLUDED.favorite_genres),
+         favorite_keywords = CONCAT(profile_ai_taste.favorite_keywords, ',', EXCLUDED.favorite_keywords),
+         favorite_actors = CONCAT(profile_ai_taste.favorite_actors, ',', EXCLUDED.favorite_actors),
+         updated_at = NOW()`,
+      [profile_id, textGenres, textKeywords, textActors, ""]
+    );
+
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({error:"profile event error", details:e.message});
+  }
+});
+
+app.get("/ai/recommendations/:profileId", async (req,res)=>{
+  try{
+    const profileId = req.params.profileId;
+
+    const taste = await pool.query(
+      `SELECT * FROM profile_ai_taste WHERE profile_id=$1`,
+      [profileId]
+    );
+
+    const t = taste.rows[0] || {};
+    const words = [
+      ...(t.favorite_genres || "").split(","),
+      ...(t.favorite_keywords || "").split(","),
+      ...(t.favorite_actors || "").split(",")
+    ]
+    .map(x=>x.trim().toLowerCase())
+    .filter(x=>x.length > 2);
+
+    const all = await pool.query(
+      `SELECT *
+       FROM contents
+       ORDER BY popularity DESC NULLS LAST, views DESC NULLS LAST, id DESC
+       LIMIT 100`
+    );
+
+    const watched = await pool.query(
+      `SELECT content_id
+       FROM profile_ai_events
+       WHERE profile_id=$1`,
+      [profileId]
+    );
+
+    const watchedIds = new Set(watched.rows.map(x=>Number(x.content_id)));
+
+    const scored = all.rows.map(c=>{
+      const hay = [
+        c.title,
+        c.description,
+        c.genre,
+        c.genres,
+        c.tags,
+        c.actors,
+        c.category
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      let score = 0;
+
+      for(const w of words){
+        if(hay.includes(w)) score += 8;
+      }
+
+      score += Number(c.popularity || 0);
+      score += Number(c.views || 0);
+
+      if(watchedIds.has(Number(c.id))) score -= 50;
+
+      return {
+        ...c,
+        ai_recommendation_score: score
+      };
+    })
+    .filter(x=>x.ai_recommendation_score > -20)
+    .sort((a,b)=>b.ai_recommendation_score - a.ai_recommendation_score)
+    .slice(0,20);
+
+    res.json(scored);
+  }catch(e){
+    res.status(500).json({error:"recommendations error", details:e.message});
+  }
+});
+
+/* SEMANTIC SEARCH AI PRO */
+
+function normalizeSearchText(text){
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9ăâîșşțţ\s]/gi," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function semanticScoreContent(content, query){
+  const q = normalizeSearchText(query);
+  const words = q.split(" ").filter(w=>w.length > 2);
+
+  const hay = normalizeSearchText([
+    content.title,
+    content.description,
+    content.genre,
+    content.genres,
+    content.tags,
+    content.actors,
+    content.director,
+    content.category,
+    content.subcategory,
+    content.collection,
+    content.language,
+    content.country
+  ].filter(Boolean).join(" "));
+
+  let score = 0;
+
+  if(hay.includes(q)) score += 80;
+
+  for(const w of words){
+    if(hay.includes(w)) score += 12;
+    if(normalizeSearchText(content.title).includes(w)) score += 18;
+    if(normalizeSearchText(content.genres || content.genre).includes(w)) score += 15;
+    if(normalizeSearchText(content.tags).includes(w)) score += 14;
+  }
+
+  const intentMap = {
+    anime:["anime","animatie","animaţie","cartoon"],
+    dark:["dark","thriller","horror","mister","crime"],
+    fantasy:["fantasy","sf","sci fi","magie","magic","aventuri"],
+    action:["actiune","acțiune","action","aventuri"],
+    comedy:["comedie","comedy"],
+    kids:["kids","copii","family","familie","animatie","animaţie"],
+    avatar:["avatar","aang","fantasy","aventuri","sf"]
+  };
+
+  for(const intent in intentMap){
+    if(q.includes(intent)){
+      for(const term of intentMap[intent]){
+        if(hay.includes(normalizeSearchText(term))) score += 10;
+      }
+    }
+  }
+
+  score += Number(content.popularity || 0) * 0.4;
+  score += Number(content.views || 0) * 0.2;
+
+  return Math.round(score);
+}
+
+app.get("/ai/search", async (req,res)=>{
+  try{
+    const q = req.query.q || "";
+    const profileId = req.query.profile_id || null;
+
+    if(!q.trim()){
+      return res.json([]);
+    }
+
+    const result = await pool.query(
+      `SELECT *
+       FROM contents
+       ORDER BY id DESC
+       LIMIT 500`
+    );
+
+    let profileBoostWords = [];
+
+    if(profileId){
+      const taste = await pool.query(
+        `SELECT * FROM profile_ai_taste WHERE profile_id=$1`,
+        [profileId]
+      );
+
+      const t = taste.rows[0] || {};
+      profileBoostWords = [
+        ...(t.favorite_genres || "").split(","),
+        ...(t.favorite_keywords || "").split(","),
+        ...(t.favorite_actors || "").split(",")
+      ].map(x=>normalizeSearchText(x)).filter(x=>x.length > 2);
+    }
+
+    const scored = result.rows.map(c=>{
+      let score = semanticScoreContent(c,q);
+
+      const hay = normalizeSearchText([
+        c.title,c.description,c.genre,c.genres,c.tags,c.actors,c.category
+      ].filter(Boolean).join(" "));
+
+      for(const w of profileBoostWords){
+        if(hay.includes(w)) score += 3;
+      }
+
+      return {
+        ...c,
+        semantic_score:score
+      };
+    })
+    .filter(x=>x.semantic_score > 0)
+    .sort((a,b)=>b.semantic_score - a.semantic_score)
+    .slice(0,50);
+
+    res.json(scored);
+  }catch(e){
+    res.status(500).json({error:"semantic search error", details:e.message});
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });

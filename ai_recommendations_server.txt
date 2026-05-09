@@ -1,0 +1,117 @@
+/* AI RECOMMENDATIONS PER PROFILE PRO */
+
+app.post("/ai/profile-event", async (req,res)=>{
+  try{
+    const {profile_id, content_id, event_type="view", weight=1} = req.body;
+
+    if(!profile_id || !content_id){
+      return res.status(400).json({error:"profile_id and content_id required"});
+    }
+
+    await pool.query(
+      `INSERT INTO profile_ai_events (profile_id, content_id, event_type, weight)
+       VALUES ($1,$2,$3,$4)`,
+      [profile_id, content_id, event_type, weight]
+    );
+
+    const c = await pool.query(
+      `SELECT genre, genres, tags, actors
+       FROM contents
+       WHERE id=$1`,
+      [content_id]
+    );
+
+    const item = c.rows[0] || {};
+    const textGenres = [item.genre,item.genres].filter(Boolean).join(",");
+    const textKeywords = [item.tags].filter(Boolean).join(",");
+    const textActors = [item.actors].filter(Boolean).join(",");
+
+    await pool.query(
+      `INSERT INTO profile_ai_taste
+       (profile_id, favorite_genres, favorite_keywords, favorite_actors, mood_profile, updated_at)
+       VALUES ($1,$2,$3,$4,$5,NOW())
+       ON CONFLICT (profile_id)
+       DO UPDATE SET
+         favorite_genres = CONCAT(profile_ai_taste.favorite_genres, ',', EXCLUDED.favorite_genres),
+         favorite_keywords = CONCAT(profile_ai_taste.favorite_keywords, ',', EXCLUDED.favorite_keywords),
+         favorite_actors = CONCAT(profile_ai_taste.favorite_actors, ',', EXCLUDED.favorite_actors),
+         updated_at = NOW()`,
+      [profile_id, textGenres, textKeywords, textActors, ""]
+    );
+
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({error:"profile event error", details:e.message});
+  }
+});
+
+app.get("/ai/recommendations/:profileId", async (req,res)=>{
+  try{
+    const profileId = req.params.profileId;
+
+    const taste = await pool.query(
+      `SELECT * FROM profile_ai_taste WHERE profile_id=$1`,
+      [profileId]
+    );
+
+    const t = taste.rows[0] || {};
+    const words = [
+      ...(t.favorite_genres || "").split(","),
+      ...(t.favorite_keywords || "").split(","),
+      ...(t.favorite_actors || "").split(",")
+    ]
+    .map(x=>x.trim().toLowerCase())
+    .filter(x=>x.length > 2);
+
+    const all = await pool.query(
+      `SELECT *
+       FROM contents
+       ORDER BY popularity DESC NULLS LAST, views DESC NULLS LAST, id DESC
+       LIMIT 100`
+    );
+
+    const watched = await pool.query(
+      `SELECT content_id
+       FROM profile_ai_events
+       WHERE profile_id=$1`,
+      [profileId]
+    );
+
+    const watchedIds = new Set(watched.rows.map(x=>Number(x.content_id)));
+
+    const scored = all.rows.map(c=>{
+      const hay = [
+        c.title,
+        c.description,
+        c.genre,
+        c.genres,
+        c.tags,
+        c.actors,
+        c.category
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      let score = 0;
+
+      for(const w of words){
+        if(hay.includes(w)) score += 8;
+      }
+
+      score += Number(c.popularity || 0);
+      score += Number(c.views || 0);
+
+      if(watchedIds.has(Number(c.id))) score -= 50;
+
+      return {
+        ...c,
+        ai_recommendation_score: score
+      };
+    })
+    .filter(x=>x.ai_recommendation_score > -20)
+    .sort((a,b)=>b.ai_recommendation_score - a.ai_recommendation_score)
+    .slice(0,20);
+
+    res.json(scored);
+  }catch(e){
+    res.status(500).json({error:"recommendations error", details:e.message});
+  }
+});
