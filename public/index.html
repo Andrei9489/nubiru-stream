@@ -676,7 +676,7 @@ async function loadHomepageRails(){
     const data = await res.json();
 
     renderRail("homeContinue", data.continueWatching || [], true);
-    renderRail("homeTrending", data.trending || []);
+    // renderRail("homeTrending", data.trending || []); // disabled: Trending PRO uses /ai/trending
     renderRail("homeAiPicks", data.aiPicks || []);
     renderRail("homeSemantic", data.semantic || []);
     renderRail("homeMovies", data.movies || []);
@@ -971,6 +971,7 @@ function playPlayerSource(i){
 
 async function playItem(item){
   sendAIProfileEvent(item.id,"play",3);
+  sendViewEventPRO(item.id);
   const source = await getSmartPlay(item);
   const url = source.url;
   const sources = source.sources || [];
@@ -1277,7 +1278,7 @@ async function forceHomepageRails(){
     const data = await res.json();
 
     forceRenderRail("homeContinue", data.continueWatching || [], true);
-    forceRenderRail("homeTrending", data.trending || []);
+    // forceRenderRail("homeTrending", data.trending || []); // disabled: Trending PRO uses /ai/trending
     forceRenderRail("homeAiPicks", data.aiPicks || []);
     forceRenderRail("homeSemantic", data.semantic || []);
     forceRenderRail("homeMovies", data.movies || []);
@@ -2312,6 +2313,79 @@ function installSemanticSearchHooks(){
 setTimeout(installSemanticSearchHooks,800);
 setTimeout(installSemanticSearchHooks,2000);
 setTimeout(installSemanticSearchHooks,4000);
+
+
+
+setTimeout(loadTrendingPRO,700);
+setTimeout(loadTrendingPRO,1600);
+setTimeout(loadTrendingPRO,3000);
+setInterval(loadTrendingPRO,10000);
+
+
+setTimeout(loadTrendingPRO,1200);
+setTimeout(loadTrendingPRO,3000);
+
+document.addEventListener("DOMContentLoaded", ()=>{
+  if(typeof loadTrendingPRO === "function"){
+    loadTrendingPRO();
+    setTimeout(loadTrendingPRO,1000);
+    setTimeout(loadTrendingPRO,2500);
+    setInterval(loadTrendingPRO,8000);
+  }
+});
+
+
+async function loadTrendingPRO(){
+  try{
+    const res = await fetch("/ai/trending");
+    const data = await res.json();
+
+    const box = document.getElementById("homeTrending");
+    if(!box) return;
+
+    if(!data.length){
+      box.innerHTML = "<span class='small'>Nu există trending momentan.</span>";
+      return;
+    }
+
+    box.innerHTML = data.map(x=>`
+      <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+        <div class="top-badge">🔥 ${x.trending_score || 0}</div>
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div class="cardInfo">
+          <b>${x.title}</b><br>
+          <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+          <span class="small">Views: ${x.base_views || 0}</span><br>
+          <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+          <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+          <button onclick='event.stopPropagation();addWatchlist(${x.id})'>❤️</button>
+        </div>
+      </div>
+    `).join("");
+  }catch(e){
+    console.log("Trending PRO error", e);
+  }
+}
+
+async function sendViewEventPRO(contentId){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  fetch("/ai/view-event",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId
+    })
+  }).catch(()=>{});
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+  loadTrendingPRO();
+  setTimeout(loadTrendingPRO,1000);
+  setTimeout(loadTrendingPRO,2500);
+  setInterval(loadTrendingPRO,8000);
+});
 
 
 </script>

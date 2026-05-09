@@ -1,0 +1,53 @@
+
+async function loadTrendingPRO(){
+  try{
+    const res = await fetch("/ai/trending");
+    const data = await res.json();
+
+    const box = document.getElementById("homeTrending");
+    if(!box) return;
+
+    if(!data.length){
+      box.innerHTML = "<span class='small'>Nu există trending momentan.</span>";
+      return;
+    }
+
+    box.innerHTML = data.map(x=>`
+      <div class="card" onclick='openItem(${JSON.stringify(x)})'>
+        <div class="top-badge">🔥 ${x.trending_score || 0}</div>
+        <img src="${x.poster_url || "https://via.placeholder.com/300x450"}">
+        <div class="cardInfo">
+          <b>${x.title}</b><br>
+          <span class="small">${x.year || ""} ${x.genres || x.genre || ""}</span><br>
+          <span class="small">Views: ${x.base_views || 0}</span><br>
+          <button onclick='event.stopPropagation();playItem(${JSON.stringify(x)})'>▶</button>
+          <button onclick='event.stopPropagation();openEpisodes(${JSON.stringify(x)})'>📺</button>
+          <button onclick='event.stopPropagation();addWatchlist(${x.id})'>❤️</button>
+        </div>
+      </div>
+    `).join("");
+  }catch(e){
+    console.log("Trending PRO error", e);
+  }
+}
+
+async function sendViewEventPRO(contentId){
+  const profileId = localStorage.getItem("activeProfileId") || 1;
+
+  fetch("/ai/view-event",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      profile_id:Number(profileId),
+      content_id:contentId
+    })
+  }).catch(()=>{});
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+  loadTrendingPRO();
+  setTimeout(loadTrendingPRO,1000);
+  setTimeout(loadTrendingPRO,2500);
+  setInterval(loadTrendingPRO,8000);
+});
+

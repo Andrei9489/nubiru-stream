@@ -2995,6 +2995,94 @@ app.get("/ai/search", async (req,res)=>{
   }
 });
 
+/* TRENDING ENGINE PRO */
+
+app.get("/ai/trending", async (req,res)=>{
+  try{
+    const q = await pool.query(`
+      SELECT
+        c.*,
+
+        COALESCE(c.views,0) AS base_views,
+        COALESCE(c.popularity,0) AS base_popularity,
+
+        COALESCE(w.watchlist_count,0) AS watchlist_count,
+        COALESCE(p.progress_count,0) AS progress_count,
+        COALESCE(e.ai_events_count,0) AS ai_events_count,
+
+        (
+          COALESCE(c.views,0) * 2 +
+          COALESCE(c.popularity,0) * 3 +
+          COALESCE(w.watchlist_count,0) * 15 +
+          COALESCE(p.progress_count,0) * 12 +
+          COALESCE(e.ai_events_count,0) * 8
+        ) AS trending_score
+
+      FROM contents c
+
+      LEFT JOIN (
+        SELECT content_id, COUNT(*) AS watchlist_count
+        FROM profile_watchlist
+        GROUP BY content_id
+      ) w ON w.content_id = c.id
+
+      LEFT JOIN (
+        SELECT content_id, COUNT(*) AS progress_count
+        FROM profile_continue_watching
+        GROUP BY content_id
+      ) p ON p.content_id = c.id
+
+      LEFT JOIN (
+        SELECT content_id, COUNT(*) AS ai_events_count
+        FROM profile_ai_events
+        GROUP BY content_id
+      ) e ON e.content_id = c.id
+
+      ORDER BY trending_score DESC, c.id DESC
+      LIMIT 30
+    `);
+
+    res.json(q.rows);
+  }catch(e){
+    res.status(500).json({
+      error:"trending engine error",
+      details:e.message
+    });
+  }
+});
+
+app.post("/ai/view-event", async (req,res)=>{
+  try{
+    const { content_id, profile_id=1 } = req.body;
+
+    if(!content_id){
+      return res.status(400).json({error:"content_id required"});
+    }
+
+    await pool.query(
+      `UPDATE contents
+       SET views = COALESCE(views,0) + 1,
+           popularity = COALESCE(popularity,0) + 1
+       WHERE id=$1`,
+      [content_id]
+    );
+
+    await pool.query(
+      `INSERT INTO profile_ai_events
+       (profile_id, content_id, event_type, weight)
+       VALUES ($1,$2,'view',1)`,
+      [profile_id, content_id]
+    );
+
+    res.json({ok:true});
+  }catch(e){
+    res.status(500).json({
+      error:"view event error",
+      details:e.message
+    });
+  }
+});
+
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/../public/index.html");
 });
